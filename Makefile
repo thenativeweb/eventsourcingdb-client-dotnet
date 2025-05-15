@@ -17,6 +17,10 @@ analyze:
 test:
 	@dotnet test $(TESTS) --verbosity normal
 
+format:
+	@dotnet format $(LIBRARY)
+	@dotnet format $(TESTS)
+
 clean:
 	@dotnet clean $(LIBRARY)
 	@dotnet clean $(TESTS)
@@ -27,4 +31,9 @@ build: clean
 
 	@dotnet pack $(LIBRARY) -c Release -p:Company="the native web GmbH" -p:Version=${VERSION} -o ./build/
 
-.PHONY: analyze build clean qa test
+.PHONY: analyze \
+        build \
+        clean \
+        format \
+        qa \
+        test
