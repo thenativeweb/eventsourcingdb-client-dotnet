@@ -29,11 +29,13 @@ build: clean
 	$(eval VERSION=$(shell git tag --points-at HEAD))
 	$(eval VERSION=$(or $(VERSION), 0.0.0))
 
-	@dotnet pack $(LIBRARY) -c Release -p:Company="the native web GmbH" -p:Version=${VERSION} -o ./build/
+	@cp README.md src/EventSourcingDb/README.md
+	@dotnet pack $(LIBRARY) -c Release -p:Company="the native web GmbH" -p:Version=${VERSION} -p:PackageReadmeFile=README.md -o ./build/
+	@rm src/EventSourcingDb/README.md
 
 .PHONY: analyze \
-        build \
-        clean \
-        format \
-        qa \
-        test
+		build \
+		clean \
+		format \
+		qa \
+		test

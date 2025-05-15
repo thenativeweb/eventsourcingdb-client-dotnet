@@ -3,5 +3,8 @@ bin/
 build/
 obj/
 
+# Build files
+src/EventSourcingDb/README.md
+
 # OS generated files and directories
 .DS_Store
