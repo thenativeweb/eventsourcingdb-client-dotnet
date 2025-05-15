@@ -1,0 +1,7 @@
+# Build directory
+bin/
+build/
+obj/
+
+# OS generated files and directories
+.DS_Store

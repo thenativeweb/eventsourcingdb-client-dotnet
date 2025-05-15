@@ -1,0 +1,17 @@
+name: QA
+
+on: pull_request
+
+jobs:
+  qa:
+    name: QA
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+      - name: Use .NET
+        uses: actions/setup-dotnet@v4
+      - name: Run QA
+        run: make qa
