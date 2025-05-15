@@ -26,7 +26,8 @@ clean:
 	@dotnet clean $(TESTS)
 
 build: clean
-	$(eval VERSION=$(shell git tag --points-at HEAD))
+	$(eval VERSION_RAW=$(shell git tag --points-at HEAD))
+    $(eval VERSION=$(shell echo $(VERSION_RAW) | sed 's/^v//'))
 	$(eval VERSION=$(or $(VERSION), 0.0.0))
 
 	@cp README.md src/EventSourcingDb/README.md
