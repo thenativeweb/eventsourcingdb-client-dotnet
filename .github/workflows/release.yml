@@ -31,3 +31,13 @@ jobs:
         run: |
           git tag v${{steps.get_next_version.outputs.version}}
           git push origin v${{steps.get_next_version.outputs.version}}
+      - name: Build artifacts
+        if: ${{ steps.get_next_version.outputs.hasNextVersion == 'true' }}
+        run: |
+          make build
+      # - name: Publish new version
+      #   if: ${{ steps.get_next_version.outputs.hasNextVersion == 'true' }}
+      #   run: |
+      #     dotnet nuget push ./build/*.nupkg \
+      #       --api-key ${{ secrets.NUGET_API_KEY }} \
+      #       --source https://api.nuget.org/v3/index.json

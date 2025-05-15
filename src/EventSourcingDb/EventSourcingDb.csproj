@@ -12,4 +12,23 @@
     <PackageReference Include="Testcontainers" Version="4.4.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <PackageId>EventSourcingDb</PackageId>
+    <Authors>the native web GmbH</Authors>
+    <Company>the native web GmbH</Company>
+    <Description>The official .NET client SDK for EventSourcingDB.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://www.eventsourcingdb.io</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/thenativeweb/eventsourcingdb-client-dotnet</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>eventsourcingdb;esdb;event;events;event sourcing;event store;cqrs</PackageTags>
+    <IncludeSymbols>false</IncludeSymbols>
+    <IncludeSource>false</IncludeSource>
+  </PropertyGroup>
+
 </Project>
