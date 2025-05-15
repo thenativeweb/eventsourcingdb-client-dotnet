@@ -12,14 +12,19 @@ public static class DockerfileHelper
 
     public static string GetImageVersionFromDockerfile()
     {
-        var baseDirectory = AppContext.BaseDirectory;
-        var dockerfilePath = Path.GetFullPath(Path.Combine(baseDirectory, "..", "..", "..", "..", "docker", "Dockerfile"));
+        var current = new DirectoryInfo(AppContext.BaseDirectory);
 
-        if (!File.Exists(dockerfilePath))
+        while (current != null && !File.Exists(Path.Combine(current.FullName, "docker", "Dockerfile")))
         {
-            throw new FileNotFoundException("Dockerfile not found.", dockerfilePath);
+            current = current.Parent;
         }
 
+        if (current == null)
+        {
+            throw new FileNotFoundException("Dockerfile not found in any parent directory.");
+        }
+
+        var dockerfilePath = Path.Combine(current.FullName, "docker", "Dockerfile");
         var data = File.ReadAllText(dockerfilePath);
 
         var match = VersionRegex.Match(data);
