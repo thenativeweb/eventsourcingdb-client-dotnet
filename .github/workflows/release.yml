@@ -1,0 +1,33 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - "main"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: "0"
+      - name: Use .NET
+        uses: actions/setup-dotnet@v4
+      - name: Run QA
+        run: make qa
+      - name: Get next version
+        id: get_next_version
+        uses: thenativeweb/get-next-version@2.6.3
+      - name: Create new version
+        if: ${{ steps.get_next_version.outputs.hasNextVersion == 'true' }}
+        run: |
+          git tag v${{steps.get_next_version.outputs.version}}
+          git push origin v${{steps.get_next_version.outputs.version}}
