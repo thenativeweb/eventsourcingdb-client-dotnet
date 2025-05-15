@@ -10,7 +10,7 @@ public class Container
 {
     private string _imageName = "thenativeweb/eventsourcingdb";
     private string _imageTag = "latest";
-    private int _internalPort = 3000;
+    private ushort _internalPort = 3000;
     private string _apiToken = "secret";
     private IContainer? _container;
 
@@ -26,7 +26,7 @@ public class Container
         return this;
     }
 
-    public Container WithPort(int port)
+    public Container WithPort(ushort port)
     {
         this._internalPort = port;
         return this;
@@ -60,7 +60,7 @@ public class Container
         return this._container?.Hostname ?? throw new InvalidOperationException("Container must be running.");
     }
 
-    public int GetMappedPort()
+    public ushort GetMappedPort()
     {
         return this._container?.GetMappedPublicPort(this._internalPort)
                ?? throw new InvalidOperationException("Container must be running.");
