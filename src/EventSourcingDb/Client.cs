@@ -17,7 +17,7 @@ public class Client
         this._apiToken = apiToken;
     }
 
-    public async Task Ping()
+    public async Task PingAsync()
     {
         var pingUrl = new Uri(_baseUrl, "/api/v1/ping");
 
