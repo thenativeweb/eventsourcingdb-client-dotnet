@@ -22,7 +22,7 @@ public class Client
         var pingUrl = new Uri(_baseUrl, "/api/v1/ping");
 
         using var request = new HttpRequestMessage(HttpMethod.Get, pingUrl);
-        using var response = await this._httpClient.SendAsync(request);
+        using var response = await Client._httpClient.SendAsync(request);
 
         if (response.StatusCode != System.Net.HttpStatusCode.OK)
         {
