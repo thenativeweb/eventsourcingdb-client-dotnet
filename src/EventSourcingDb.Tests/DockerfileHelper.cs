@@ -1,8 +1,8 @@
-namespace EventSourcingDb.Tests;
-
 using System;
 using System.IO;
 using System.Text.RegularExpressions;
+
+namespace EventSourcingDb.Tests;
 
 public static class DockerfileHelper
 {
