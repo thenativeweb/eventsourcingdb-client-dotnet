@@ -1,10 +1,11 @@
 namespace EventSourcingDb;
 
+using System;
+using System.Threading.Tasks;
+
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Configurations;
-using System;
-using System.Threading.Tasks;
 
 public class Container
 {
