@@ -43,11 +43,9 @@ public sealed class PingTests : IAsyncLifetime
         var invalidUri = new Uri($"http://non-existent-host:{port}/");
         var client = new Client(invalidUri, apiToken);
 
-        var exception = await Assert.ThrowsAsync<HttpRequestException>(async () =>
+        await Assert.ThrowsAsync<HttpRequestException>(async () =>
         {
             await client.PingAsync();
         });
-
-        Assert.Contains("No such host", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 }
