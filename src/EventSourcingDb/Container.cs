@@ -1,9 +1,8 @@
 using System;
 using System.Threading.Tasks;
-
 using DotNet.Testcontainers.Builders;
-using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Configurations;
+using DotNet.Testcontainers.Containers;
 
 namespace EventSourcingDb;
 
