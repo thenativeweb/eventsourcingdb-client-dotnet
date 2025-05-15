@@ -1,5 +1,7 @@
 namespace EventSourcingDb;
 
+using System;
+
 public class Client
 {
     private readonly Uri _baseUrl;
