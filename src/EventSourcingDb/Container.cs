@@ -52,7 +52,7 @@ public class Container
             .WithCleanUp(true);
 
         this._container = builder.Build();
-        await this._container.StartAsync();
+        await this._container.StartAsync().ConfigureAwait(false);
     }
 
     public string GetHost()
@@ -85,8 +85,8 @@ public class Container
     {
         if (this._container is not null)
         {
-            await this._container.StopAsync();
-            await this._container.DisposeAsync();
+            await this._container.StopAsync().ConfigureAwait(false);
+            await this._container.DisposeAsync().ConfigureAwait(false);
             this._container = null;
         }
     }
