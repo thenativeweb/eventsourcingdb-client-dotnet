@@ -2,6 +2,7 @@
 bin/
 build/
 obj/
+.vs/
 
 # Build files
 src/EventSourcingDb/README.md
