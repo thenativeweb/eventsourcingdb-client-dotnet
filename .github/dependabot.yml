@@ -12,8 +12,8 @@ updates:
     allow:
       - dependency-type: direct
     commit-message:
-      prefix: chore
-      prefix-development: chore
+      prefix: "chore: "
+      prefix-development: "chore: "
 
   - package-ecosystem: nuget
     directory: "/src/EventSourcingDb.Tests"
@@ -27,8 +27,8 @@ updates:
     allow:
       - dependency-type: direct
     commit-message:
-      prefix: chore
-      prefix-development: chore
+      prefix: "chore: "
+      prefix-development: "chore: "
 
   - package-ecosystem: "docker"
     directory: "/docker"
