@@ -16,83 +16,83 @@ public class Container
 
     public Container WithImageTag(string tag)
     {
-        this._imageTag = tag;
+        _imageTag = tag;
         return this;
     }
 
     public Container WithApiToken(string token)
     {
-        this._apiToken = token;
+        _apiToken = token;
         return this;
     }
 
     public Container WithPort(ushort port)
     {
-        this._internalPort = port;
+        _internalPort = port;
         return this;
     }
 
     public async Task StartAsync()
     {
         var builder = new ContainerBuilder()
-            .WithImage($"{this._imageName}:{this._imageTag}")
-            .WithExposedPort(this._internalPort)
-            .WithPortBinding(this._internalPort, assignRandomHostPort: true)
+            .WithImage($"{_imageName}:{_imageTag}")
+            .WithExposedPort(_internalPort)
+            .WithPortBinding(_internalPort, assignRandomHostPort: true)
             .WithCommand(
                 "run",
-                "--api-token", this._apiToken,
+                "--api-token", _apiToken,
                 "--data-directory-temporary",
                 "--http-enabled",
                 "--https-enabled=false"
             )
             .WithWaitStrategy(Wait.ForUnixContainer()
                 .UntilHttpRequestIsSucceeded(request =>
-                    request.ForPort(this._internalPort)
+                    request.ForPort(_internalPort)
                            .ForPath("/api/v1/ping")))
             .WithCleanUp(true);
 
-        this._container = builder.Build();
-        await this._container.StartAsync().ConfigureAwait(false);
+        _container = builder.Build();
+        await _container.StartAsync().ConfigureAwait(false);
     }
 
     public string GetHost()
     {
-        return this._container?.Hostname ?? throw new InvalidOperationException("Container must be running.");
+        return _container?.Hostname ?? throw new InvalidOperationException("Container must be running.");
     }
 
     public ushort GetMappedPort()
     {
-        return this._container?.GetMappedPublicPort(this._internalPort)
+        return _container?.GetMappedPublicPort(_internalPort)
                ?? throw new InvalidOperationException("Container must be running.");
     }
 
     public Uri GetBaseUrl()
     {
-        return new Uri($"http://{this.GetHost()}:{this.GetMappedPort()}");
+        return new Uri($"http://{GetHost()}:{GetMappedPort()}");
     }
 
     public string GetApiToken()
     {
-        return this._apiToken;
+        return _apiToken;
     }
 
     public bool IsRunning()
     {
-        return this._container?.State == TestcontainersStates.Running;
+        return _container?.State == TestcontainersStates.Running;
     }
 
     public async Task StopAsync()
     {
-        if (this._container is not null)
+        if (_container is not null)
         {
-            await this._container.StopAsync().ConfigureAwait(false);
-            await this._container.DisposeAsync().ConfigureAwait(false);
-            this._container = null;
+            await _container.StopAsync().ConfigureAwait(false);
+            await _container.DisposeAsync().ConfigureAwait(false);
+            _container = null;
         }
     }
 
     public Client GetClient()
     {
-        return new Client(this.GetBaseUrl(), this.GetApiToken());
+        return new Client(GetBaseUrl(), GetApiToken());
     }
 }

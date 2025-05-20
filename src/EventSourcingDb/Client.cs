@@ -13,8 +13,8 @@ public class Client
 
     public Client(Uri baseUrl, string apiToken)
     {
-        this._baseUrl = baseUrl;
-        this._apiToken = apiToken;
+        _baseUrl = baseUrl;
+        _apiToken = apiToken;
     }
 
     public async Task PingAsync()
