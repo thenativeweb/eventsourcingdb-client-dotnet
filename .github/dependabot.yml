@@ -1,7 +1,22 @@
 version: 2
 updates:
   - package-ecosystem: nuget
-    directory: "/"
+    directory: "/src/EventSourcingDb"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    assignees:
+      - thenativeweb/internal_dev
+    labels:
+      - Dependencies
+    allow:
+      - dependency-type: direct
+    commit-message:
+      prefix: chore
+      prefix-development: chore
+
+  - package-ecosystem: nuget
+    directory: "/src/EventSourcingDb.Tests"
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
