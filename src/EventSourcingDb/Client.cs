@@ -9,7 +9,9 @@ public class Client
 {
     private readonly Uri _baseUrl;
     private readonly string _apiToken;
-    private static readonly HttpClient _httpClient = new();
+    private static readonly HttpClient _httpClient = new {
+        PooledConnectionLifetime = TimeSpan.FromMinutes(2),
+    };
 
     public Client(Uri baseUrl, string apiToken)
     {
