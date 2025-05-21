@@ -53,7 +53,7 @@ public class Container
             .WithCleanUp(true);
 
         _container = builder.Build();
-        await _container.StartAsync().ConfigureAwait(false);
+        await _container.StartAsync(token).ConfigureAwait(false);
     }
 
     public string GetHost()
@@ -86,7 +86,7 @@ public class Container
     {
         if (_container is not null)
         {
-            await _container.StopAsync().ConfigureAwait(false);
+            await _container.StopAsync(token).ConfigureAwait(false);
             await _container.DisposeAsync().ConfigureAwait(false);
             _container = null;
         }
