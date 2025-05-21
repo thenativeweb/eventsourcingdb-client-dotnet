@@ -31,7 +31,7 @@ public class Client
 
         if (response.StatusCode != System.Net.HttpStatusCode.OK)
         {
-            throw new Exception($"Failed to ping, got HTTP status code '{(int)response.StatusCode}', expected '200'.");
+            throw new HttpRequestException($"Failed to ping, got HTTP status code '{(int)response.StatusCode}', expected '200'.");
         }
 
         using var responseStream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
@@ -39,12 +39,12 @@ public class Client
 
         if (!responseJson.RootElement.TryGetProperty("type", out var typeElement) || typeElement.ValueKind != JsonValueKind.String)
         {
-            throw new Exception("Failed to parse response.");
+            throw new JsonException("Failed to parse response. Property Type ist not a string");
         }
 
         if (typeElement.GetString() != "io.eventsourcingdb.api.ping-received")
         {
-            throw new Exception("Failed to ping.");
+            throw new ValueOutOfRangeException("Type must be io.eventsourcingdb.api.ping-received");
         }
     }
 }
