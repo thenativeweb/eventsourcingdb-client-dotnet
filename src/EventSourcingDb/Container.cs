@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Configurations;
@@ -32,7 +33,7 @@ public class Container
         return this;
     }
 
-    public async Task StartAsync()
+    public async Task StartAsync(CancellationToken token = default)
     {
         var builder = new ContainerBuilder()
             .WithImage($"{_imageName}:{_imageTag}")
@@ -52,7 +53,7 @@ public class Container
             .WithCleanUp(true);
 
         _container = builder.Build();
-        await _container.StartAsync().ConfigureAwait(false);
+        await _container.StartAsync(token).ConfigureAwait(false);
     }
 
     public string GetHost()
@@ -81,11 +82,11 @@ public class Container
         return _container?.State == TestcontainersStates.Running;
     }
 
-    public async Task StopAsync()
+    public async Task StopAsync(CancellationToken token = default)
     {
         if (_container is not null)
         {
-            await _container.StopAsync().ConfigureAwait(false);
+            await _container.StopAsync(token).ConfigureAwait(false);
             await _container.DisposeAsync().ConfigureAwait(false);
             _container = null;
         }
