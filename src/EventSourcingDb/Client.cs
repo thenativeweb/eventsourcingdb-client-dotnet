@@ -43,9 +43,16 @@ public class Client
             throw new JsonException("Failed to parse response. Property Type ist not a string");
         }
 
-        if (typeElement.GetString() != "io.eventsourcingdb.api.ping-received")
+        var typeString = typeElement.GetString();
+
+        if (string.IsNullOrEmpty(typeString))
         {
-            throw new ValueOutOfRangeException("Type must be io.eventsourcingdb.api.ping-received");
+            throw new InvalidValueException("Failed to ping, empty string got expected io.eventsourcingdb.api.ping-received");
+        }
+
+        if (typeString != "io.eventsourcingdb.api.ping-received")
+        {
+            throw new InvalidValueException($"Failed to ping, got '{typeString}' expected io.eventsourcingdb.api.ping-received");
         }
     }
 }
