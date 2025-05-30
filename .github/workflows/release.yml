@@ -35,9 +35,9 @@ jobs:
         if: ${{ steps.get_next_version.outputs.hasNextVersion == 'true' }}
         run: |
           make build
-      # - name: Publish new version
-      #   if: ${{ steps.get_next_version.outputs.hasNextVersion == 'true' }}
-      #   run: |
-      #     dotnet nuget push ./build/*.nupkg \
-      #       --api-key ${{ secrets.NUGET_API_KEY }} \
-      #       --source https://api.nuget.org/v3/index.json
+      - name: Publish new version
+        if: ${{ steps.get_next_version.outputs.hasNextVersion == 'true' }}
+        run: |
+          dotnet nuget push ./build/*.nupkg \
+            --api-key ${{ secrets.TOKEN_GITHUB_TO_NUGET_RW }} \
+            --source https://api.nuget.org/v3/index.json
