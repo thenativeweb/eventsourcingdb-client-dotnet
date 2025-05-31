@@ -1,4 +1,4 @@
-# eventsourcingdb-client-dotnet
+# eventsourcingdb
 
 The official .NET client SDK for [EventSourcingDB](https://www.eventsourcingdb.io) – a purpose-built database for event sourcing.
 
