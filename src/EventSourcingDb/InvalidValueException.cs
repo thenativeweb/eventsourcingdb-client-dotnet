@@ -2,22 +2,10 @@ using System;
 
 namespace EventSourcingDb;
 
-public class InvalidValueException : Exception
+public class InvalidValueException(string? message) : Exception(message)
 {
-    internal string? _message;
+    internal string? _message = message;
 
-    /// <summary>
-    /// Creates a new exception object to relay error information to the user.
-    /// </summary>
-    /// <param name="message">The context specific error message.</param>
-    public InvalidValueException(string? message) : base(message)
-    {
-        _message = message;
-    }
-
-    /// <summary>
-    /// Gets a message that describes the current exception.
-    /// </summary>
     public override string Message
     {
         get
