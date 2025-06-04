@@ -37,9 +37,15 @@ public class Client
             .GetFromJsonAsync<PingResponse>(pingUrl, _defaultSerializerOptions, token)
             .ConfigureAwait(false);
 
+
+        if (string.IsNullOrEmpty(response.Type))
+        {
+            throw new InvalidValueException("Failed to ping, empty string got expected 'io.eventsourcingdb.api.ping-received'.");
+        }
+
         if (response.Type != "io.eventsourcingdb.api.ping-received")
         {
-            throw new Exception("Failed to ping.");
+            throw new InvalidValueException($"Failed to ping, got '{response.Type}' expected 'io.eventsourcingdb.api.ping-received'.");
         }
     }
 }
