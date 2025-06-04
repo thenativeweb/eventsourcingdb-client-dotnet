@@ -37,29 +37,15 @@ public class Client
             .GetFromJsonAsync<PingResponse>(pingUrl, _defaultSerializerOptions, token)
             .ConfigureAwait(false);
 
-        if (response.StatusCode != System.Net.HttpStatusCode.OK)
+
+        if (string.IsNullOrEmpty(response.Type))
         {
-            throw new HttpRequestException($"Failed to ping, got HTTP status code '{(int)response.StatusCode}', expected '200'.");
+            throw new InvalidValueException("Failed to ping, empty string got expected 'io.eventsourcingdb.api.ping-received'.");
         }
 
-        using var responseStream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
-        using var responseJson = await JsonDocument.ParseAsync(responseStream, cancellationToken: token).ConfigureAwait(false);
-
-        if (!responseJson.RootElement.TryGetProperty("type", out var typeElement) || typeElement.ValueKind != JsonValueKind.String)
+        if (response.Type != "io.eventsourcingdb.api.ping-received")
         {
-            throw new JsonException("Failed to parse response. Property Type ist not a string");
-        }
-
-        var typeString = typeElement.GetString();
-
-        if (string.IsNullOrEmpty(typeString))
-        {
-            throw new InvalidValueException("Failed to ping, empty string got expected io.eventsourcingdb.api.ping-received");
-        }
-
-        if (typeString != "io.eventsourcingdb.api.ping-received")
-        {
-            throw new InvalidValueException($"Failed to ping, got '{typeString}' expected io.eventsourcingdb.api.ping-received");
+            throw new InvalidValueException($"Failed to ping, got '{response.Type}' expected 'io.eventsourcingdb.api.ping-received'.");
         }
     }
 }
