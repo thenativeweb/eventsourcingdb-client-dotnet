@@ -1,21 +1,27 @@
 using System;
 using System.Net.Http;
+using System.Net.Http.Json;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using EventSourcingDb.Types;
 
 namespace EventSourcingDb;
 
 public class Client
 {
-    private readonly Uri _baseUrl;
-    private readonly string _apiToken;
+    private static readonly JsonSerializerOptions _defaultSerializerOptions = new JsonSerializerOptions
+    {
+        PropertyNameCaseInsensitive = true
+    };
     private static readonly HttpClient _httpClient = new HttpClient(
         new SocketsHttpHandler
         {
             PooledConnectionLifetime = TimeSpan.FromMinutes(2)
         }
     );
+    private readonly Uri _baseUrl;
+    private readonly string _apiToken;
 
     public Client(Uri baseUrl, string apiToken)
     {
@@ -27,8 +33,9 @@ public class Client
     {
         var pingUrl = new Uri(_baseUrl, "/api/v1/ping");
 
-        using var request = new HttpRequestMessage(HttpMethod.Get, pingUrl);
-        using var response = await Client._httpClient.SendAsync(request, token).ConfigureAwait(false);
+        var response = await _httpClient
+            .GetFromJsonAsync<PingResponse>(pingUrl, _defaultSerializerOptions, token)
+            .ConfigureAwait(false);
 
         if (response.StatusCode != System.Net.HttpStatusCode.OK)
         {
