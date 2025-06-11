@@ -36,7 +36,7 @@ public class Client
     public async Task PingAsync(CancellationToken token = default)
     {
         var pingUrl = new Uri(_baseUrl, "/api/v1/ping");
-        _logger.LogTrace("Trying to ping {Url}", pingUrl);
+        _logger.LogTrace("Trying to ping '{Url}'…", pingUrl);
 
         try
         {
@@ -46,7 +46,7 @@ public class Client
 
             if (string.IsNullOrEmpty(response.Type))
             {
-                throw new InvalidValueException("Failed to ping, empty string got expected 'io.eventsourcingdb.api.ping-received'.");
+                throw new InvalidValueException("Failed to ping, got empty string, expected 'io.eventsourcingdb.api.ping-received'.");
             }
 
             if (response.Type != "io.eventsourcingdb.api.ping-received")
@@ -54,11 +54,11 @@ public class Client
                 throw new InvalidValueException($"Failed to ping, got '{response.Type}' expected 'io.eventsourcingdb.api.ping-received'.");
             }
 
-            _logger.LogTrace("Pinging {Url} succeeded", pingUrl);
+            _logger.LogTrace("Pinged '{Url}' successfully.", pingUrl);
         }
         catch (Exception e)
         {
-            _logger.LogError(e, "Failed to ping {Url}", pingUrl);
+            _logger.LogError(e, "Failed to ping '{Url}'.", pingUrl);
             throw;
         }
     }
