@@ -30,8 +30,7 @@ build: clean
 	$(eval VERSION=$(shell echo $(VERSION_RAW) | sed 's/^v//'))
 	$(eval VERSION=$(or $(VERSION), 0.0.0))
 
-	@cp README.md src/EventSourcingDb/README.md
-	@dotnet pack $(LIBRARY) -c Release -p:Company="the native web GmbH" -p:Version=${VERSION} -p:PackageReadmeFile=README.md -o ./build/
+	@dotnet pack $(LIBRARY) -c Release -p:Company="the native web GmbH" -p:Version=${VERSION} -o ./build/
 	@rm src/EventSourcingDb/README.md
 
 .PHONY: analyze \
