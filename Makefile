@@ -31,7 +31,6 @@ build: clean
 	$(eval VERSION=$(or $(VERSION), 0.0.0))
 
 	@dotnet pack $(LIBRARY) -c Release -p:Company="the native web GmbH" -p:Version=${VERSION} -o ./build/
-	@rm src/EventSourcingDb/README.md
 
 .PHONY: analyze \
 		build \
