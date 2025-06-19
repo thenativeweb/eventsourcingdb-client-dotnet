@@ -37,6 +37,14 @@ Optionally, you might provide a `CancellationToken`.
 
 *Note that `PingAsync` does not require authentication, so the call may succeed even if the API token is invalid.*
 
+If you want to verify the API token, call `VerifyApiTokenAsync`. If the token is invalid, the function will throw an exception:
+
+```csharp
+await client.VerifyApiTokenAsync();
+```
+
+Optionally, you might provide a `CancellationToken`.
+
 ### Using Testcontainers
 
 Import the `Container` class, create an instance, call the `StartAsync` method to run a test container, get a client, run your test code, and finally call the `StopAsync` method to stop the test container:
