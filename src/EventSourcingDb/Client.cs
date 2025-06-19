@@ -1,5 +1,7 @@
 using System;
+using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Threading;
@@ -35,23 +37,34 @@ public class Client
 
     public async Task PingAsync(CancellationToken token = default)
     {
+        const string expectedEventType = "io.eventsourcingdb.api.ping-received";
+
         var pingUrl = new Uri(_baseUrl, "/api/v1/ping");
-        _logger.LogTrace("Trying to ping '{Url}'…", pingUrl);
+        _logger.LogTrace("Trying to ping '{Url}'...", pingUrl);
 
         try
         {
-            var response = await _httpClient
-                .GetFromJsonAsync<PingResponse>(pingUrl, _defaultSerializerOptions, token)
-                .ConfigureAwait(false);
-
-            if (string.IsNullOrEmpty(response.Type))
+            using var request = new HttpRequestMessage(HttpMethod.Get, pingUrl);
+            using var response = await _httpClient.SendAsync(request, token).ConfigureAwait(false);
+            if (response.StatusCode != HttpStatusCode.OK)
             {
-                throw new InvalidValueException("Failed to ping, got empty string, expected 'io.eventsourcingdb.api.ping-received'.");
+                throw new HttpRequestException(
+                    message: "Unexpected status code.", inner: null, statusCode: response.StatusCode
+                );
             }
 
-            if (response.Type != "io.eventsourcingdb.api.ping-received")
+            var pingResponse = await response.Content
+                .ReadFromJsonAsync<VerifyApiTokenResponse>(_defaultSerializerOptions, token)
+                .ConfigureAwait(false);
+
+            if (string.IsNullOrEmpty(pingResponse.Type))
             {
-                throw new InvalidValueException($"Failed to ping, got '{response.Type}' expected 'io.eventsourcingdb.api.ping-received'.");
+                throw new InvalidValueException($"Failed to get the expected response, got empty string, expected '{expectedEventType}'.");
+            }
+
+            if (pingResponse.Type != expectedEventType)
+            {
+                throw new InvalidValueException($"Failed to get the expected response, got '{pingResponse.Type}' expected '{expectedEventType}'.");
             }
 
             _logger.LogTrace("Pinged '{Url}' successfully.", pingUrl);
@@ -59,6 +72,49 @@ public class Client
         catch (Exception e)
         {
             _logger.LogError(e, "Failed to ping '{Url}'.", pingUrl);
+            throw;
+        }
+    }
+
+    public async Task VerifyApiTokenAsync(CancellationToken token = default)
+    {
+        const string expectedEventType = "io.eventsourcingdb.api.api-token-verified";
+
+        var verifyUrl = new Uri(_baseUrl, "/api/v1/verify-api-token");
+        _logger.LogTrace("Trying to verify API token using url '{Url}'...", verifyUrl);
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, verifyUrl);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiToken);
+
+            using var response = await _httpClient.SendAsync(request, token).ConfigureAwait(false);
+            if (response.StatusCode != HttpStatusCode.OK)
+            {
+                throw new HttpRequestException(
+                    message: "Unexpected status code.", inner: null, statusCode: response.StatusCode
+                );
+            }
+
+            var verifyResponse = await response.Content
+                .ReadFromJsonAsync<VerifyApiTokenResponse>(_defaultSerializerOptions, token)
+                .ConfigureAwait(false);
+
+            if (string.IsNullOrEmpty(verifyResponse.Type))
+            {
+                throw new InvalidValueException($"Failed to get the expected response, got empty string, expected '{expectedEventType}'.");
+            }
+
+            if (verifyResponse.Type != expectedEventType)
+            {
+                throw new InvalidValueException($"Failed to get the expected response, got '{verifyResponse.Type}' expected '{expectedEventType}'.");
+            }
+
+            _logger.LogTrace("Verified API token using url '{Url}' successfully.", verifyUrl);
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "Failed to verify API token using url '{Url}'.", verifyUrl);
             throw;
         }
     }
