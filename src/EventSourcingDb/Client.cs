@@ -5,6 +5,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
@@ -141,7 +142,7 @@ public class Client
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiToken);
             request.Content = new StringContent(
                 JsonSerializer.Serialize(new { events, preconditions }, _defaultSerializerOptions),
-                System.Text.Encoding.UTF8,
+                Encoding.UTF8,
                 "application/json"
             );
 
@@ -159,7 +160,7 @@ public class Client
 
             if (eventsResponse == null) throw new InvalidValueException("Failed to parse response.");
 
-            var result = eventsResponse.Select(cloudEvent => cloudEvent.ToEvent()).ToArray();
+            var result = eventsResponse.Select(cloudEvent => new Event(cloudEvent)).ToArray();
 
             _logger.LogTrace("Written '{Count}' events using url '{Url}' successfully.", result.Length, writeEventsUrl);
 

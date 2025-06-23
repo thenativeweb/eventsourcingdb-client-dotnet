@@ -11,7 +11,7 @@ public record Event(
     string Subject,
     string Type,
     string DataContentType,
-    object Data,
+    JsonElement Data,
     string Hash,
     string PredecessorHash,
     string? TraceParent,
@@ -21,11 +21,21 @@ public record Event(
     private static readonly JsonSerializerOptions _defaultSerializerOptions =
         new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
 
+    internal Event(CloudEvent cloudEvent)
+        : this(cloudEvent.SpecVersion,
+            cloudEvent.Id,
+            DateTimeOffset.Parse(cloudEvent.Time),
+            cloudEvent.Source,
+            cloudEvent.Subject,
+            cloudEvent.Type,
+            cloudEvent.DataContentType,
+            cloudEvent.Data,
+            cloudEvent.Hash,
+            cloudEvent.PredecessorHash,
+            cloudEvent.TraceParent,
+            cloudEvent.TraceState)
+    { }
+
     public T? GetData<T>() =>
-        Data switch
-        {
-            JsonElement element => element.Deserialize<T>(_defaultSerializerOptions),
-            string text => JsonSerializer.Deserialize<T>(text, _defaultSerializerOptions),
-            _ => default
-        };
+        Data.Deserialize<T>(_defaultSerializerOptions);
 }

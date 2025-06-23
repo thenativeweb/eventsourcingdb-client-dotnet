@@ -1,4 +1,4 @@
-using System;
+using System.Text.Json;
 
 namespace EventSourcingDb.Types;
 
@@ -10,26 +10,9 @@ internal record CloudEvent(
     string Subject,
     string Type,
     string DataContentType,
-    object Data,
+    JsonElement Data,
     string Hash,
     string PredecessorHash,
     string? TraceParent = null,
     string? TraceState = null
-)
-{
-    internal Event ToEvent() =>
-        new Event(
-            SpecVersion,
-            Id,
-            DateTimeOffset.Parse(Time),
-            Source,
-            Subject,
-            Type,
-            DataContentType,
-            Data,
-            Hash,
-            PredecessorHash,
-            TraceParent,
-            TraceState
-        );
-}
+);
