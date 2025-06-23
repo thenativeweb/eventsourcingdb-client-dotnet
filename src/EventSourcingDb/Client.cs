@@ -1,9 +1,13 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using EventSourcingDb.Types;
@@ -16,7 +20,10 @@ public class Client
 {
     private static readonly JsonSerializerOptions _defaultSerializerOptions = new JsonSerializerOptions
     {
-        PropertyNameCaseInsensitive = true
+        PropertyNameCaseInsensitive = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = false,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
     private static readonly HttpClient _httpClient = new HttpClient(
         new SocketsHttpHandler
@@ -115,6 +122,53 @@ public class Client
         catch (Exception e)
         {
             _logger.LogError(e, "Failed to verify API token using url '{Url}'.", verifyUrl);
+            throw;
+        }
+    }
+
+    public async Task<IReadOnlyList<Event>> WriteEvents(
+        IEnumerable<EventCandidate> events,
+        IEnumerable<Precondition>? preconditions = null,
+        CancellationToken token = default)
+    {
+        preconditions ??= [];
+        var writeEventsUrl = new Uri(_baseUrl, "/api/v1/write-events");
+
+        _logger.LogTrace("Trying to write events using url '{Url}'...", writeEventsUrl);
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, writeEventsUrl);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiToken);
+            request.Content = new StringContent(
+                JsonSerializer.Serialize(new { events, preconditions }, _defaultSerializerOptions),
+                Encoding.UTF8,
+                "application/json"
+            );
+
+            using var response = await _httpClient.SendAsync(request, token).ConfigureAwait(false);
+            if (response.StatusCode != HttpStatusCode.OK)
+            {
+                throw new HttpRequestException(
+                    message: "Unexpected status code.", inner: null, statusCode: response.StatusCode
+                );
+            }
+
+            var eventsResponse = await response.Content
+                .ReadFromJsonAsync<CloudEvent[]>(_defaultSerializerOptions, token)
+                .ConfigureAwait(false);
+
+            if (eventsResponse == null) throw new InvalidValueException("Failed to parse response.");
+
+            var result = eventsResponse.Select(cloudEvent => new Event(cloudEvent)).ToArray();
+
+            _logger.LogTrace("Written '{Count}' events using url '{Url}' successfully.", result.Length, writeEventsUrl);
+
+            return result;
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, "Failed to write events using url '{Url}'.", writeEventsUrl);
             throw;
         }
     }
