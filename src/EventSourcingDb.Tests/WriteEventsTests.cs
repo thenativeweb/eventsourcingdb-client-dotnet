@@ -37,7 +37,7 @@ public class WriteEventsTests : IAsyncLifetime
             Data: new EventData(42)
         );
 
-        var writtenEvents = await client.WriteEvents([eventCandidate]);
+        var writtenEvents = await client.WriteEventsAsync([eventCandidate]);
 
         Assert.Single(writtenEvents);
         Assert.Collection(writtenEvents, writtenEvent => Assert.Equal("0", writtenEvent.Id));
@@ -64,7 +64,7 @@ public class WriteEventsTests : IAsyncLifetime
             Data: secondData
         );
 
-        var writtenEvents = await client.WriteEvents([firstEvent, secondEvent]);
+        var writtenEvents = await client.WriteEventsAsync([firstEvent, secondEvent]);
 
         Assert.Equal(2, writtenEvents.Count);
         Assert.Collection(writtenEvents,
@@ -102,10 +102,10 @@ public class WriteEventsTests : IAsyncLifetime
             Data: secondData
         );
 
-        _ = await client.WriteEvents([firstEvent]);
+        _ = await client.WriteEventsAsync([firstEvent]);
 
         var error = await Assert.ThrowsAsync<HttpRequestException>(async () =>
-            await client.WriteEvents(
+            await client.WriteEventsAsync(
                 [secondEvent],
                 [Precondition.IsSubjectPristinePrecondition("/test")]
             )
@@ -135,10 +135,10 @@ public class WriteEventsTests : IAsyncLifetime
             Data: secondData
         );
 
-        _ = await client.WriteEvents([firstEvent]);
+        _ = await client.WriteEventsAsync([firstEvent]);
 
         var error = await Assert.ThrowsAsync<HttpRequestException>(async () =>
-            await client.WriteEvents(
+            await client.WriteEventsAsync(
                 [secondEvent],
                 [Precondition.IsSubjectOnEventIdPrecondition("/test", "1")]
             )
