@@ -177,7 +177,7 @@ public class ReadEventsTests : IAsyncLifetime
         await client.WriteEventsAsync([firstEvent, secondEvent]);
 
         var foundEvents = new List<Event>();
-        var options = new ReadEventsOptions(Recursive: false, Order: Order.AntiChronological);
+        var options = new ReadEventsOptions(Recursive: false, Order: Order.Antichronological);
 
         await foreach (var eventResult in client.ReadEventsAsync("/test", options))
         {

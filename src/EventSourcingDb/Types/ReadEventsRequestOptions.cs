@@ -10,9 +10,9 @@ internal class ReadEventsRequestOptions
         Order = options.Order != null
             ? options.Order switch
             {
-                Types.Order.AntiChronological => "antichronological",
+                Types.Order.Antichronological => "antichronological",
                 Types.Order.Chronological => "chronological",
-                _ => throw new Exception($"Unhandled switch case {options.Order}.")
+                _ => throw new Exception($"Unhandled switch case '{options.Order}'.")
             }
             : null;
         LowerBound = options.LowerBound != null
@@ -29,7 +29,7 @@ internal class ReadEventsRequestOptions
                 {
                     ReadIfEventIsMissing.ReadEverything => "read-everything",
                     ReadIfEventIsMissing.ReadNothing => "read-nothing",
-                    _ => throw new Exception($"Unhandled switch case {options.FromLatestEvent.IfEventIsMissing}.")
+                    _ => throw new Exception($"Unhandled switch case '{options.FromLatestEvent.IfEventIsMissing}'.")
                 }
             )
             : null;

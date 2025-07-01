@@ -181,7 +181,6 @@ public class Client
         ReadEventsOptions options,
         [EnumeratorCancellation] CancellationToken token = default)
     {
-
         var readEventsUrl = new Uri(_baseUrl, "/api/v1/read-events");
 
         _logger.LogTrace("Trying to read events using url '{Url}'...", readEventsUrl);
@@ -224,7 +223,7 @@ public class Client
                 case "event":
                     if (line.Payload.ValueKind != JsonValueKind.Object)
                     {
-                        throw new InvalidValueException($"Received line of type 'event', but payload is not an object: {line.Payload}.");
+                        throw new InvalidValueException($"Received line of type 'event', but payload is not an object: '{line.Payload}'.");
                     }
                     var cloudEvent = line.Payload.Deserialize<CloudEvent>(_defaultSerializerOptions);
                     if (cloudEvent == null)
@@ -238,12 +237,12 @@ public class Client
                 case "error":
                     if (line.Payload.ValueKind != JsonValueKind.String)
                     {
-                        throw new InvalidValueException($"Received line of type 'error', but payload is not a string: {line.Payload}");
+                        throw new InvalidValueException($"Received line of type 'error', but payload is not a string: '{line.Payload}'.");
                     }
                     yield return new EventResult(line.Payload.GetString() ?? "unknown error");
                     yield break;
                 default:
-                    yield return new EventResult($"Failed to handle unsupported line type {line.Type}.");
+                    yield return new EventResult($"Failed to handle unsupported line type '{line.Type}'.");
                     yield break;
             }
 
