@@ -1,15 +1,18 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using EventSourcingDb.Json;
 using EventSourcingDb.Types;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -23,7 +26,8 @@ public class Client
         PropertyNameCaseInsensitive = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = false,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+
     };
     private static readonly HttpClient _httpClient = new HttpClient(
         new SocketsHttpHandler
@@ -126,7 +130,7 @@ public class Client
         }
     }
 
-    public async Task<IReadOnlyList<Event>> WriteEvents(
+    public async Task<IReadOnlyList<Event>> WriteEventsAsync(
         IEnumerable<EventCandidate> events,
         IEnumerable<Precondition>? preconditions = null,
         CancellationToken token = default)
@@ -170,6 +174,82 @@ public class Client
         {
             _logger.LogError(e, "Failed to write events using url '{Url}'.", writeEventsUrl);
             throw;
+        }
+    }
+
+    public async IAsyncEnumerable<EventResult> ReadEventsAsync(
+        string subject,
+        ReadEventsOptions options,
+        [EnumeratorCancellation] CancellationToken token = default)
+    {
+        var readEventsUrl = new Uri(_baseUrl, "/api/v1/read-events");
+
+        _logger.LogTrace("Trying to read events using url '{Url}'...", readEventsUrl);
+
+        var requestOptions = new ReadEventsRequestOptions(options);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, readEventsUrl);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiToken);
+        request.Content = new StringContent(
+            JsonSerializer.Serialize(new { subject, Options = requestOptions }, _defaultSerializerOptions),
+            Encoding.UTF8,
+            "application/json"
+        );
+
+        using var response = await _httpClient.SendAsync(request, token).ConfigureAwait(false);
+        if (response.StatusCode != HttpStatusCode.OK)
+        {
+            throw new HttpRequestException(
+                message: "Unexpected status code.", inner: null, statusCode: response.StatusCode
+            );
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
+        using var reader = new StreamReader(stream);
+
+        var eventResponse = await reader
+            .ReadLineAsync(token)
+            .ConfigureAwait(false);
+
+        while (eventResponse != null)
+        {
+            var line = JsonSerializer.Deserialize<ReadEventLine>(eventResponse, _defaultSerializerOptions);
+            if (line?.Type == null)
+            {
+                throw new InvalidValueException($"Failed to get the expected response, got null line from '{eventResponse}'.");
+            }
+
+            switch (line.Type)
+            {
+                case "event":
+                    if (line.Payload.ValueKind != JsonValueKind.Object)
+                    {
+                        throw new InvalidValueException($"Received line of type 'event', but payload is not an object: {line.Payload}.");
+                    }
+                    var cloudEvent = line.Payload.Deserialize<CloudEvent>(_defaultSerializerOptions);
+                    if (cloudEvent == null)
+                    {
+                        throw new InvalidValueException($"Failed to get the expected response, unable to deserialize '{line.Payload}' into cloud event.");
+                    }
+
+                    yield return new EventResult(new Event(cloudEvent));
+
+                    break;
+                case "error":
+                    if (line.Payload.ValueKind != JsonValueKind.String)
+                    {
+                        throw new InvalidValueException($"Received line of type 'error', but payload is not a string: {line.Payload}");
+                    }
+                    yield return new EventResult(line.Payload.GetString() ?? "unknown error");
+                    yield break;
+                default:
+                    yield return new EventResult($"Failed to handle unsupported line type {line.Type}.");
+                    yield break;
+            }
+
+            eventResponse = await reader
+                .ReadLineAsync(token)
+                .ConfigureAwait(false);
         }
     }
 }
