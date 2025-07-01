@@ -12,7 +12,6 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
-using EventSourcingDb.Json;
 using EventSourcingDb.Types;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -182,6 +181,7 @@ public class Client
         ReadEventsOptions options,
         [EnumeratorCancellation] CancellationToken token = default)
     {
+
         var readEventsUrl = new Uri(_baseUrl, "/api/v1/read-events");
 
         _logger.LogTrace("Trying to read events using url '{Url}'...", readEventsUrl);
