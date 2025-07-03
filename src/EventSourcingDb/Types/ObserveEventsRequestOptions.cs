@@ -17,7 +17,7 @@ internal class ObserveEventsRequestOptions
                 options.FromLatestEvent.IfEventIsMissing switch
                 {
                     ObserveIfEventIsMissing.ObserveEverything => "read-everything",
-                    ObserveIfEventIsMissing.WaitForEvent=> "wait-for-event",
+                    ObserveIfEventIsMissing.WaitForEvent => "wait-for-event",
                     _ => throw new Exception($"Unhandled switch case '{options.FromLatestEvent.IfEventIsMissing}'.")
                 }
             )
