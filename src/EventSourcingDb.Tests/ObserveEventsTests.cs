@@ -173,7 +173,7 @@ public class ObserveEventsTests : IAsyncLifetime
             FromLatestEvent: new ObserveFromLatestEvent(
                 "/test",
                 "io.eventsourcingdb.test",
-                ObserveIfEventIsMissing.ObserveEverything
+                ObserveIfEventIsMissing.ReadEverything
             )
         );
         using var source = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
