@@ -38,4 +38,7 @@ public record Event(
 
     public T? GetData<T>() =>
         Data.Deserialize<T>(_defaultSerializerOptions);
+
+    public object? GetData(Type type) =>
+        Data.Deserialize(type, _defaultSerializerOptions);
 }
