@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
@@ -145,6 +146,26 @@ public class WriteEventsTests : IAsyncLifetime
         );
 
         Assert.Equal(HttpStatusCode.Conflict, error.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeserializesEventDataCorrectly()
+    {
+        var client = _container!.GetClient();
+
+        var eventCandidate = new EventCandidate(
+            Source: "https://www.eventsourcingdb.io",
+            Subject: "/test",
+            Type: "io.eventsourcingdb.test",
+            Data: new EventData(42)
+        );
+
+        var writtenEvents = await client.WriteEventsAsync([eventCandidate]);
+
+        var data = writtenEvents[0].GetData(typeof(EventData));
+
+        Assert.IsType<EventData>(data);
+        Assert.Equal(eventCandidate.Data, data);
     }
 
     private record struct EventData(int Value);
