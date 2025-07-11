@@ -176,7 +176,7 @@ public class Client
         }
     }
 
-    public async IAsyncEnumerable<EventResult> ReadEventsAsync(
+    public async IAsyncEnumerable<Event> ReadEventsAsync(
         string subject,
         ReadEventsOptions options,
         [EnumeratorCancellation] CancellationToken token = default)
@@ -233,7 +233,7 @@ public class Client
                         throw new InvalidValueException($"Failed to get the expected response, unable to deserialize '{line.Payload}' into cloud event.");
                     }
 
-                    yield return new EventResult(new Event(cloudEvent));
+                    yield return new Event(cloudEvent);
 
                     break;
                 case "error":
@@ -241,11 +241,9 @@ public class Client
                     {
                         throw new InvalidValueException($"Received line of type 'error', but payload is not a string: '{line.Payload}'.");
                     }
-                    yield return new EventResult(line.Payload.GetString() ?? "unknown error");
-                    yield break;
+                    throw new Exception(line.Payload.GetString() ?? "unknown error");
                 default:
-                    yield return new EventResult($"Failed to handle unsupported line type '{line.Type}'.");
-                    yield break;
+                    throw new Exception($"Failed to handle unsupported line type '{line.Type}'.");
             }
 
             eventResponse = await reader
@@ -254,7 +252,7 @@ public class Client
         }
     }
 
-    public async IAsyncEnumerable<EventResult> ObserveEventsAsync(
+    public async IAsyncEnumerable<Event> ObserveEventsAsync(
         string subject,
         ObserveEventsOptions options,
         [EnumeratorCancellation] CancellationToken token = default)
@@ -311,7 +309,7 @@ public class Client
                         throw new InvalidValueException($"Failed to get the expected response, unable to deserialize '{line.Payload}' into cloud event.");
                     }
 
-                    yield return new EventResult(new Event(cloudEvent));
+                    yield return new Event(cloudEvent);
 
                     break;
                 case "error":
@@ -319,13 +317,11 @@ public class Client
                     {
                         throw new InvalidValueException($"Received line of type 'error', but payload is not a string: '{line.Payload}'.");
                     }
-                    yield return new EventResult(line.Payload.GetString() ?? "unknown error");
-                    yield break;
+                    throw new Exception(line.Payload.GetString() ?? "unknown error");
                 case "heartbeat":
                     continue;
                 default:
-                    yield return new EventResult($"Failed to handle unsupported line type '{line.Type}'.");
-                    yield break;
+                    throw new Exception($"Failed to handle unsupported line type '{line.Type}'.");
             }
 
             eventResponse = await reader

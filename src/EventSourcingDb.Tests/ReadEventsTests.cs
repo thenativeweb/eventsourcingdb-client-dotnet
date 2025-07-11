@@ -30,9 +30,8 @@ public class ReadEventsTests : IAsyncLifetime
         var client = _container!.GetClient();
         var didReadEvents = false;
 
-        await foreach (var eventResult in client.ReadEventsAsync("/", new ReadEventsOptions(Recursive: true)))
+        await foreach (var _ in client.ReadEventsAsync("/", new ReadEventsOptions(Recursive: true)))
         {
-            Assert.False(eventResult.IsErrorSet);
             didReadEvents = true;
         }
 
@@ -66,8 +65,7 @@ public class ReadEventsTests : IAsyncLifetime
 
         await foreach (var eventResult in client.ReadEventsAsync("/test", new ReadEventsOptions(Recursive: false)))
         {
-            Assert.False(eventResult.IsErrorSet);
-            foundEvents.Add(eventResult.Event);
+            foundEvents.Add(eventResult);
         }
 
         Assert.Equal(2, foundEvents.Count);
@@ -100,8 +98,7 @@ public class ReadEventsTests : IAsyncLifetime
 
         await foreach (var eventResult in client.ReadEventsAsync("/", new ReadEventsOptions(Recursive: true)))
         {
-            Assert.False(eventResult.IsErrorSet);
-            foundEvents.Add(eventResult.Event);
+            foundEvents.Add(eventResult);
         }
 
         Assert.Equal(2, foundEvents.Count);
@@ -135,8 +132,7 @@ public class ReadEventsTests : IAsyncLifetime
 
         await foreach (var eventResult in client.ReadEventsAsync("/test", options))
         {
-            Assert.False(eventResult.IsErrorSet);
-            foundEvents.Add(eventResult.Event);
+            foundEvents.Add(eventResult);
         }
 
         Assert.Collection(foundEvents,
@@ -181,8 +177,7 @@ public class ReadEventsTests : IAsyncLifetime
 
         await foreach (var eventResult in client.ReadEventsAsync("/test", options))
         {
-            Assert.False(eventResult.IsErrorSet);
-            foundEvents.Add(eventResult.Event);
+            foundEvents.Add(eventResult);
         }
 
         Assert.Collection(foundEvents,
@@ -227,8 +222,7 @@ public class ReadEventsTests : IAsyncLifetime
 
         await foreach (var eventResult in client.ReadEventsAsync("/test", options))
         {
-            Assert.False(eventResult.IsErrorSet);
-            foundEvents.Add(eventResult.Event);
+            foundEvents.Add(eventResult);
         }
 
         Assert.Single(foundEvents);
@@ -269,8 +263,7 @@ public class ReadEventsTests : IAsyncLifetime
 
         await foreach (var eventResult in client.ReadEventsAsync("/test", options))
         {
-            Assert.False(eventResult.IsErrorSet);
-            foundEvents.Add(eventResult.Event);
+            foundEvents.Add(eventResult);
         }
 
         Assert.Single(foundEvents);
@@ -318,8 +311,7 @@ public class ReadEventsTests : IAsyncLifetime
 
         await foreach (var eventResult in client.ReadEventsAsync("/test", options))
         {
-            Assert.False(eventResult.IsErrorSet);
-            foundEvents.Add(eventResult.Event);
+            foundEvents.Add(eventResult);
         }
 
         Assert.Single(foundEvents);
