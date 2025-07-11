@@ -33,6 +33,6 @@ public static class DockerfileHelper
             throw new InvalidOperationException("Failed to find image version in Dockerfile.");
         }
 
-        return match.Groups[1].Value;
+        return match.Groups[1].Value.Replace("\r", string.Empty);
     }
 }
