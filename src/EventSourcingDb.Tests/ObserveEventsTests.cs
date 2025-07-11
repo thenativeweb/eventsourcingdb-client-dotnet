@@ -37,9 +37,8 @@ public class ObserveEventsTests : IAsyncLifetime
 
         try
         {
-            await foreach (var eventResult in client.ObserveEventsAsync("/", options, source.Token))
+            await foreach (var _ in client.ObserveEventsAsync("/", options, source.Token))
             {
-                Assert.False(eventResult.IsErrorSet);
                 didReadEvents = true;
             }
         }
@@ -82,8 +81,7 @@ public class ObserveEventsTests : IAsyncLifetime
         {
             await foreach (var eventResult in client.ObserveEventsAsync("/", options, source.Token))
             {
-                Assert.False(eventResult.IsErrorSet);
-                observedEvents.Add(eventResult.Event);
+                observedEvents.Add(eventResult);
             }
         }
         catch (OperationCanceledException)
@@ -125,8 +123,7 @@ public class ObserveEventsTests : IAsyncLifetime
         {
             await foreach (var eventResult in client.ObserveEventsAsync("/", options, source.Token))
             {
-                Assert.False(eventResult.IsErrorSet);
-                observedEvents.Add(eventResult.Event);
+                observedEvents.Add(eventResult);
             }
         }
         catch (OperationCanceledException)
@@ -182,8 +179,7 @@ public class ObserveEventsTests : IAsyncLifetime
         {
             await foreach (var eventResult in client.ObserveEventsAsync("/", options, source.Token))
             {
-                Assert.False(eventResult.IsErrorSet);
-                observedEvents.Add(eventResult.Event);
+                observedEvents.Add(eventResult);
             }
         }
         catch (OperationCanceledException)
