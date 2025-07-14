@@ -100,34 +100,48 @@ var writtenEvents = await client.WriteEventsAsync(
 
 To read all events of a subject, call the `ReadEventsAsync` method and pass the subject and an options object. Set `Recursive` to `false` to ensure that only events of the given subject are returned, not events of nested subjects.
 
-The method returns an async stream, which you can iterate over using `await foreach`. Each result indicates whether it contains an event or an error.
+The method returns an async stream, which you can iterate over using `await foreach`:
 
 ```csharp
-await foreach (var result in client.ReadEventsAsync(
+await foreach (var @event in client.ReadEventsAsync(
     "/books/42",
     new ReadEventsOptions(Recursive: false)))
 {
-    if (result.IsEventSet)
-    {
-        var @event = result.Event!;
-        // Handle event
-    }
-    else
-    {
-        var error = result.Error!;
-        // Handle error
-    }
+    // Handle event
 }
 ```
 
+If an error occurs, the stream will terminate with an exception.
+
 *Optionally, you might provide a `CancellationToken`.*
+
+#### Deserializing Event Data
+
+Each event contains a `Data` property, which holds the event payload as JSON. To deserialize this payload into a strongly typed object, call `GetData<T>()`:
+
+```csharp
+var book = @event.GetData<BookAcquired>();
+```
+
+Alternatively, you can use the non-generic overload `GetData(Type)` to resolve the type at runtime:
+
+```csharp
+var type = typeof(BookAcquired);
+var book = (BookAcquired)@event.GetData(type)!;
+```
+
+If you prefer to work directly with the JSON structure, access the `Data` property as a `JsonElement`:
+
+```csharp
+var title = @event.Data.GetProperty("title").GetString();
+```
 
 ### Reading from subjects recursively
 
 If you want to read not only all events of a subject, but also the events of all nested subjects, set `Recursive` to `true`:
 
 ```csharp
-await foreach (var result in client.ReadEventsAsync(
+await foreach (var @event in client.ReadEventsAsync(
     "/books/42",
     new ReadEventsOptions(Recursive: true)))
 {
@@ -142,7 +156,7 @@ This also allows you to read *all* events ever written by using `/` as the subje
 By default, events are read in chronological order. To read in anti-chronological order, use the `Order` option:
 
 ```csharp
-await foreach (var result in client.ReadEventsAsync(
+await foreach (var @event in client.ReadEventsAsync(
     "/books/42",
     new ReadEventsOptions(
         Recursive: false,
@@ -159,7 +173,7 @@ await foreach (var result in client.ReadEventsAsync(
 If you only want to read a range of events, set the `LowerBound` and `UpperBound` options — either one of them or both:
 
 ```csharp
-await foreach (var result in client.ReadEventsAsync(
+await foreach (var @event in client.ReadEventsAsync(
     "/books/42",
     new ReadEventsOptions(
         Recursive: false,
@@ -175,7 +189,7 @@ await foreach (var result in client.ReadEventsAsync(
 To start reading from the latest event of a specific type, set the `FromLatestEvent` option:
 
 ```csharp
-await foreach (var result in client.ReadEventsAsync(
+await foreach (var @event in client.ReadEventsAsync(
     "/books/42",
     new ReadEventsOptions(
         Recursive: false,
@@ -197,31 +211,45 @@ To observe all future events of a subject, call the `ObserveEventsAsync` method 
 The method returns an async stream:
 
 ```csharp
-await foreach (var result in client.ObserveEventsAsync(
+await foreach (var @event in client.ObserveEventsAsync(
     "/books/42",
     new ObserveEventsOptions(Recursive: false)))
 {
-    if (result.IsEventSet)
-    {
-        var @event = result.Event!;
-        // Handle event
-    }
-    else
-    {
-        var error = result.Error!;
-        // Handle error
-    }
+    // Handle event
 }
 ```
 
+If an error occurs, the stream will terminate with an exception.
+
 *Optionally, you might provide a `CancellationToken`.*
+
+#### Deserializing Event Data
+
+Each event contains a `Data` property, which holds the event payload as JSON. To deserialize this payload into a strongly typed object, call `GetData<T>()`:
+
+```csharp
+var book = @event.GetData<BookAcquired>();
+```
+
+Alternatively, you can use the non-generic overload `GetData(Type)` to resolve the type at runtime:
+
+```csharp
+var type = typeof(BookAcquired);
+var book = (BookAcquired)@event.GetData(type)!;
+```
+
+If you prefer to work directly with the JSON structure, access the `Data` property as a `JsonElement`:
+
+```csharp
+var title = @event.Data.GetProperty("title").GetString();
+```
 
 ### Observing from subjects recursively
 
 If you want to observe not only the events of a subject, but also events of all nested subjects, set `Recursive` to `true`:
 
 ```csharp
-await foreach (var result in client.ObserveEventsAsync(
+await foreach (var @event in client.ObserveEventsAsync(
     "/books/42",
     new ObserveEventsOptions(Recursive: true)))
 {
@@ -236,7 +264,7 @@ This also allows you to observe *all* events ever written by using `/` as the su
 If you want to start observing from a certain point, set the `LowerBound` option:
 
 ```csharp
-await foreach (var result in client.ObserveEventsAsync(
+await foreach (var @event in client.ObserveEventsAsync(
     "/books/42",
     new ObserveEventsOptions(
         Recursive: false,
@@ -251,7 +279,7 @@ await foreach (var result in client.ObserveEventsAsync(
 To observe starting from the latest event of a specific type, use the `FromLatestEvent` option:
 
 ```csharp
-await foreach (var result in client.ObserveEventsAsync(
+await foreach (var @event in client.ObserveEventsAsync(
     "/books/42",
     new ObserveEventsOptions(
         Recursive: false,
