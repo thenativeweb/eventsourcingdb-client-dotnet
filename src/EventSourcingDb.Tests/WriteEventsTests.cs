@@ -174,9 +174,11 @@ public class WriteEventsTests : IAsyncLifetime
     {
         var client = _container!.GetClient();
 
+        const string invalidSubject = "test"; // Subjects must start with a slash
+
         var eventCandidate = new EventCandidate(
             Source: "https://www.eventsourcingdb.io",
-            Subject: "test", // Invalid subject, should start with a slash
+            Subject: invalidSubject,
             Type: "io.eventsourcingdb.test",
             Data: new EventData(42)
         );

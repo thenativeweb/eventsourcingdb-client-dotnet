@@ -154,7 +154,7 @@ public class Client
             {
                 var errorResponse = await response.Content.ReadAsStringAsync(token).ConfigureAwait(false);
                 throw new HttpRequestException(
-                    message: $"Unexpected status code - {errorResponse}", inner: null, statusCode: response.StatusCode
+                    message: $"Unexpected status code ('{errorResponse}').", inner: null, statusCode: response.StatusCode
                 );
             }
 
