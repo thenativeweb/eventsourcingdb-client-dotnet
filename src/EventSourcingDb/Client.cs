@@ -152,8 +152,9 @@ public class Client
             using var response = await _httpClient.SendAsync(request, token).ConfigureAwait(false);
             if (response.StatusCode != HttpStatusCode.OK)
             {
+                var errorResponse = await response.Content.ReadAsStringAsync(token).ConfigureAwait(false);
                 throw new HttpRequestException(
-                    message: "Unexpected status code.", inner: null, statusCode: response.StatusCode
+                    message: $"Unexpected status code ('{errorResponse}').", inner: null, statusCode: response.StatusCode
                 );
             }
 

@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -166,6 +167,27 @@ public class WriteEventsTests : IAsyncLifetime
 
         Assert.IsType<EventData>(data);
         Assert.Equal(eventCandidate.Data, data);
+    }
+
+    [Fact]
+    public async Task PassesErrorMessageInException()
+    {
+        var client = _container!.GetClient();
+
+        const string invalidSubject = "test"; // Subjects must start with a slash
+
+        var eventCandidate = new EventCandidate(
+            Source: "https://www.eventsourcingdb.io",
+            Subject: invalidSubject,
+            Type: "io.eventsourcingdb.test",
+            Data: new EventData(42)
+        );
+
+        var writeEvents = async () => await client.WriteEventsAsync([eventCandidate]);
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(writeEvents);
+
+        Assert.Contains("subject", ex.Message);
     }
 
     private record struct EventData(int Value);
