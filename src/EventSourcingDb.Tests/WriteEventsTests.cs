@@ -150,6 +150,39 @@ public class WriteEventsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SupportsTheIsEventQlTruePrecondition()
+    {
+        var client = _container!.GetClient();
+
+        var firstData = new EventData(23);
+        var secondData = new EventData(42);
+
+        var firstEvent = new EventCandidate(
+            Source: "https://www.eventsourcingdb.io",
+            Subject: "/test",
+            Type: "io.eventsourcingdb.test",
+            Data: firstData
+        );
+        var secondEvent = new EventCandidate(
+            Source: "https://www.eventsourcingdb.io",
+            Subject: "/test",
+            Type: "io.eventsourcingdb.test",
+            Data: secondData
+        );
+
+        _ = await client.WriteEventsAsync([firstEvent]);
+
+        var error = await Assert.ThrowsAsync<HttpRequestException>(async () =>
+            await client.WriteEventsAsync(
+                [secondEvent],
+                [Precondition.IsEventQlTruePrecondition("FROM e IN events PROJECT INTO COUNT() == 0")]
+            )
+        );
+
+        Assert.Equal(HttpStatusCode.Conflict, error.StatusCode);
+    }
+
+    [Fact]
     public async Task DeserializesEventDataCorrectly()
     {
         var client = _container!.GetClient();

@@ -96,6 +96,19 @@ var writtenEvents = await client.WriteEventsAsync(
 
 *Note that according to the CloudEvents standard, event IDs must be of type string.*
 
+### Using the `isEventQlTrue` precondition
+
+If you want to write events depending on an EventQL query, use the `IsEventQlTruePrecondition`:
+
+```csharp
+var writtenEvents = await client.WriteEventsAsync(
+    new[] { @event },
+    new[] { Precondition.IsEventQlTruePrecondition("FROM e IN events WHERE e.type == 'io.eventsourcingdb.library.book-borrowed' PROJECT INTO COUNT() < 10") }
+);
+```
+
+*Note that the query must return a single row with a single value, which is interpreted as a boolean.*
+
 ## Reading Events
 
 To read all events of a subject, call the `ReadEventsAsync` method and pass the subject and an options object. Set `Recursive` to `false` to ensure that only events of the given subject are returned, not events of nested subjects.
