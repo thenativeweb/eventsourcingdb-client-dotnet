@@ -352,7 +352,7 @@ var isRunning = container.IsRunning();
 
 #### Configuring the Container Instance
 
-By default, `Container` uses the `preview` tag of the official EventSourcingDB Docker image. To change that, call the `WithImageTag` method:
+By default, `Container` uses the `latest` tag of the official EventSourcingDB Docker image. To change that, call the `WithImageTag` method:
 
 ```csharp
 var container = new Container()
