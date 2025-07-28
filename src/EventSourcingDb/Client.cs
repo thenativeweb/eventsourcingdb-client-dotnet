@@ -371,12 +371,12 @@ public class Client
                 case "eventType":
                     if (line.Payload.ValueKind != JsonValueKind.Object)
                     {
-                        throw new InvalidValueException($"Received line of type 'event', but payload is not an object: '{line.Payload}'.");
+                        throw new InvalidValueException($"Received line of type 'eventType', but payload is not an object: '{line.Payload}'.");
                     }
                     var eventType = line.Payload.Deserialize<EventType>(_defaultSerializerOptions);
                     if (eventType == null)
                     {
-                        throw new InvalidValueException($"Failed to get the expected response, unable to deserialize '{line.Payload}' into cloud event.");
+                        throw new InvalidValueException($"Failed to get the expected response, unable to deserialize '{line.Payload}' into event type.");
                     }
 
                     yield return eventType;
