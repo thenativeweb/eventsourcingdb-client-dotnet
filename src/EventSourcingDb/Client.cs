@@ -399,4 +399,40 @@ public class Client
                 .ConfigureAwait(false);
         }
     }
+
+    public async Task<EventType> ReadEventTypeAsync(
+        string eventType,
+        CancellationToken token = default)
+    {
+        var readEventTypeUrl = new Uri(_baseUrl, $"/api/v1/read-event-type");
+
+        _logger.LogTrace("Trying to read event type using url '{Url}'...", readEventTypeUrl);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, readEventTypeUrl);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiToken);
+        request.Content = new StringContent(
+            JsonSerializer.Serialize(new { eventType }, _defaultSerializerOptions),
+            Encoding.UTF8,
+            "application/json"
+        );
+
+        using var response = await _httpClient.SendAsync(request, token).ConfigureAwait(false);
+        if (response.StatusCode != HttpStatusCode.OK)
+        {
+            throw new HttpRequestException(
+                message: "Unexpected status code.", inner: null, statusCode: response.StatusCode
+            );
+        }
+
+        var eventTypeResponse = await response.Content
+            .ReadFromJsonAsync<EventType>(_defaultSerializerOptions, token)
+            .ConfigureAwait(false);
+
+        if (eventTypeResponse == null)
+        {
+            throw new InvalidValueException($"Failed to get the expected response, got null for event type '{eventType}'.");
+        }
+
+        return eventTypeResponse;
+    }
 }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -11,7 +11,7 @@ using Xunit;
 
 namespace EventSourcingDb.Tests;
 
-public class ReadEventTypes : IAsyncLifetime
+public class ReadEventTypesTest : IAsyncLifetime
 {
     private Container? _container;
 
@@ -69,19 +69,19 @@ public class ReadEventTypes : IAsyncLifetime
 
         var readEventTypes = new List<EventType>();
 
-        await foreach(var eventType in client.ReadEventTypesAsync())
+        await foreach (var eventType in client.ReadEventTypesAsync())
         {
             readEventTypes.Add(eventType);
         }
 
         Assert.Equal(2, readEventTypes.Count);
         Assert.Equal(readEventTypes[0], new EventType(
-            Eventtype: "io.eventsourcingdb.v1.test",
+            Type: "io.eventsourcingdb.v1.test",
             IsPhantom: false,
             Schema: null
         ));
         Assert.Equal(readEventTypes[1], new EventType(
-            Eventtype: "io.eventsourcingdb.v2.test",
+            Type: "io.eventsourcingdb.v2.test",
             IsPhantom: false,
             Schema: null
         ));
@@ -92,18 +92,23 @@ public class ReadEventTypes : IAsyncLifetime
     {
         var client = _container!.GetClient();
 
+        // TODO: simplify this once schema registration is supported by the client.
         var registerEventSchemaUrl = new Uri(_container.GetBaseUrl(), "/api/v1/register-event-schema");
-        var eventSchema = new {
+        var eventSchema = new
+        {
             Type = "object",
-            Properties = new {value = new {type = "integer"}},
-            Required = new[] {"value"}
+            Properties = new { value = new { type = "integer" } },
+            Required = new[] { "value" }
         };
 
         using var request = new HttpRequestMessage(HttpMethod.Post, registerEventSchemaUrl);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _container.GetApiToken());
         request.Content = new StringContent(
-            JsonSerializer.Serialize(new RegisterEventSchemaRequest(
-                    "io.eventsourcingdb.v1.test", eventSchema), _defaultSerializerOptions),
+            JsonSerializer.Serialize(new
+            {
+                eventType = "io.eventsourcingdb.v1.test",
+                schema = eventSchema
+            }, _defaultSerializerOptions),
             Encoding.UTF8,
             "application/json"
         );
@@ -120,7 +125,7 @@ public class ReadEventTypes : IAsyncLifetime
         Assert.Single(readEventTypes);
         Assert.Collection(readEventTypes, eventType =>
         {
-            Assert.Equal("io.eventsourcingdb.v1.test", eventType.Eventtype);
+            Assert.Equal("io.eventsourcingdb.v1.test", eventType.Type);
             Assert.True(eventType.IsPhantom);
             Assert.NotNull(eventType.Schema);
 
