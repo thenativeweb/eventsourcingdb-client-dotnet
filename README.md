@@ -96,7 +96,7 @@ var writtenEvents = await client.WriteEventsAsync(
 
 *Note that according to the CloudEvents standard, event IDs must be of type string.*
 
-### Using the `isEventQlTrue` precondition
+### Using the `IsEventQlTrue` precondition
 
 If you want to write events depending on an EventQL query, use the `IsEventQlTruePrecondition`:
 
@@ -307,7 +307,25 @@ await foreach (var @event in client.ObserveEventsAsync(
 
 *Note that `FromLatestEvent` and `LowerBound` cannot be used at the same time.*
 
-### Using Testcontainers
+## Listing Event Types
+
+To list all event types, call the `ReadEventTypesAsync` method:
+
+```csharp
+await foreach (var eventType in client.ReadEventTypesAsync())
+{
+    // Handle event type
+}
+```
+
+## Listing A Specific Event Type
+To list a specific event type, call the `ReadEventTypeAsync` method with the event type as an argument
+
+```csharp
+var eventType = await client.ReadEventTypeAsync("io.eventsourcingdb.library.book-acquired");
+```
+
+## Using Testcontainers
 
 Import the `Container` class, create an instance, call the `StartAsync` method to run a test container, get a client, run your test code, and finally call the `StopAsync` method to stop the test container:
 
@@ -334,7 +352,7 @@ var isRunning = container.IsRunning();
 
 #### Configuring the Container Instance
 
-By default, `Container` uses the `latest` tag of the official EventSourcingDB Docker image. To change that, call the `WithImageTag` method:
+By default, `Container` uses the `preview` tag of the official EventSourcingDB Docker image. To change that, call the `WithImageTag` method:
 
 ```csharp
 var container = new Container()
