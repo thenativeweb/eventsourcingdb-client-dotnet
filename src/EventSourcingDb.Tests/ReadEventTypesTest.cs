@@ -31,7 +31,7 @@ public class ReadEventTypesTest : IAsyncLifetime
     }
 
     [Fact]
-    public async Task ReadsNoEventTypesIfTHeDatabaseIsEmpty()
+    public async Task ReadsNoEventTypesIfTheDatabaseIsEmpty()
     {
         var client = _container!.GetClient();
         var didReadEvenTypes = false;
