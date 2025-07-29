@@ -309,17 +309,18 @@ await foreach (var @event in client.ObserveEventsAsync(
 
 ## Listing Event Types
 
-To list all event types, call the `ReadEventTypesAsync` method:
+To list all event types, call the `ReadEventTypesAsync` method. The method returns an async stream:
 
 ```csharp
 await foreach (var eventType in client.ReadEventTypesAsync())
 {
-    // Handle event type
+    // ...
 }
 ```
 
-## Listing A Specific Event Type
-To list a specific event type, call the `ReadEventTypeAsync` method with the event type as an argument
+## Listing a Specific Event Type
+
+To list a specific event type, call the `ReadEventTypeAsync` method with the event type as an argument. The method returns the detailed event type, which includes the schema:
 
 ```csharp
 var eventType = await client.ReadEventTypeAsync("io.eventsourcingdb.library.book-acquired");
