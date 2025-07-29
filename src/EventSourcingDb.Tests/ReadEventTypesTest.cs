@@ -45,7 +45,7 @@ public class ReadEventTypesTest : IAsyncLifetime
     }
 
     [Fact]
-    public async Task ReadsAlleEventTypes()
+    public async Task ReadsAllEventTypes()
     {
         var client = _container!.GetClient();
 
