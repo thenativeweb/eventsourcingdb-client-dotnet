@@ -96,7 +96,7 @@ var writtenEvents = await client.WriteEventsAsync(
 
 *Note that according to the CloudEvents standard, event IDs must be of type string.*
 
-### Using the `isEventQlTrue` precondition
+### Using the `IsEventQlTrue` precondition
 
 If you want to write events depending on an EventQL query, use the `IsEventQlTruePrecondition`:
 
@@ -307,7 +307,26 @@ await foreach (var @event in client.ObserveEventsAsync(
 
 *Note that `FromLatestEvent` and `LowerBound` cannot be used at the same time.*
 
-### Using Testcontainers
+## Listing Event Types
+
+To list all event types, call the `ReadEventTypesAsync` method. The method returns an async stream:
+
+```csharp
+await foreach (var eventType in client.ReadEventTypesAsync())
+{
+    // ...
+}
+```
+
+## Listing a Specific Event Type
+
+To list a specific event type, call the `ReadEventTypeAsync` method with the event type as an argument. The method returns the detailed event type, which includes the schema:
+
+```csharp
+var eventType = await client.ReadEventTypeAsync("io.eventsourcingdb.library.book-acquired");
+```
+
+## Using Testcontainers
 
 Import the `Container` class, create an instance, call the `StartAsync` method to run a test container, get a client, run your test code, and finally call the `StopAsync` method to stop the test container:
 

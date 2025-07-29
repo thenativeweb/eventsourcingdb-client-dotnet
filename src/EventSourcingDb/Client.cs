@@ -330,4 +330,109 @@ public class Client
                 .ConfigureAwait(false);
         }
     }
+
+    public async IAsyncEnumerable<EventType> ReadEventTypesAsync(
+        [EnumeratorCancellation] CancellationToken token = default)
+    {
+        var readEvenTypesUrl = new Uri(_baseUrl, "/api/v1/read-event-types");
+
+        _logger.LogTrace("Trying to read event types using url '{Url}'...", readEvenTypesUrl);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, readEvenTypesUrl);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiToken);
+
+        using var response = await _httpClient
+            .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token)
+            .ConfigureAwait(false);
+        if (response.StatusCode != HttpStatusCode.OK)
+        {
+            throw new HttpRequestException(
+                message: "Unexpected status code.", inner: null, statusCode: response.StatusCode
+            );
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
+        using var reader = new StreamReader(stream);
+
+        var eventTypesResponse = await reader
+            .ReadLineAsync(token)
+            .ConfigureAwait(false);
+
+        while (eventTypesResponse != null)
+        {
+            var line = JsonSerializer.Deserialize<ReadEventLine>(eventTypesResponse, _defaultSerializerOptions);
+            if (line?.Type == null)
+            {
+                throw new InvalidValueException($"Failed to get the expected response, got null line from '{eventTypesResponse}'.");
+            }
+
+            switch (line.Type)
+            {
+                case "eventType":
+                    if (line.Payload.ValueKind != JsonValueKind.Object)
+                    {
+                        throw new InvalidValueException($"Received line of type 'eventType', but payload is not an object: '{line.Payload}'.");
+                    }
+                    var eventType = line.Payload.Deserialize<EventType>(_defaultSerializerOptions);
+                    if (eventType == null)
+                    {
+                        throw new InvalidValueException($"Failed to get the expected response, unable to deserialize '{line.Payload}' into event type.");
+                    }
+
+                    yield return eventType;
+
+                    break;
+                case "error":
+                    if (line.Payload.ValueKind != JsonValueKind.String)
+                    {
+                        throw new InvalidValueException($"Received line of type 'error', but payload is not a string: '{line.Payload}'.");
+                    }
+                    throw new Exception(line.Payload.GetString() ?? "unknown error");
+                case "heartbeat":
+                    continue;
+                default:
+                    throw new Exception($"Failed to handle unsupported line type '{line.Type}'.");
+            }
+
+            eventTypesResponse = await reader
+                .ReadLineAsync(token)
+                .ConfigureAwait(false);
+        }
+    }
+
+    public async Task<EventType> ReadEventTypeAsync(
+        string eventType,
+        CancellationToken token = default)
+    {
+        var readEventTypeUrl = new Uri(_baseUrl, $"/api/v1/read-event-type");
+
+        _logger.LogTrace("Trying to read event type using url '{Url}'...", readEventTypeUrl);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, readEventTypeUrl);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiToken);
+        request.Content = new StringContent(
+            JsonSerializer.Serialize(new { eventType }, _defaultSerializerOptions),
+            Encoding.UTF8,
+            "application/json"
+        );
+
+        using var response = await _httpClient.SendAsync(request, token).ConfigureAwait(false);
+        if (response.StatusCode != HttpStatusCode.OK)
+        {
+            throw new HttpRequestException(
+                message: "Unexpected status code.", inner: null, statusCode: response.StatusCode
+            );
+        }
+
+        var eventTypeResponse = await response.Content
+            .ReadFromJsonAsync<EventType>(_defaultSerializerOptions, token)
+            .ConfigureAwait(false);
+
+        if (eventTypeResponse == null)
+        {
+            throw new InvalidValueException($"Failed to get the expected response, got null for event type '{eventType}'.");
+        }
+
+        return eventTypeResponse;
+    }
 }
