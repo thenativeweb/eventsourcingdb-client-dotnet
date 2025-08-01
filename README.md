@@ -96,14 +96,14 @@ var writtenEvents = await client.WriteEventsAsync(
 
 *Note that according to the CloudEvents standard, event IDs must be of type string.*
 
-### Using the `IsEventQlQueryTrue` precondition
+### Using the `IsEventQlTrue` precondition
 
-If you want to write events depending on an EventQL query, use the `IsEventQlQueryTruePrecondition`:
+If you want to write events depending on an EventQL query, use the `IsEventQlTruePrecondition`:
 
 ```csharp
 var writtenEvents = await client.WriteEventsAsync(
     new[] { @event },
-    new[] { Precondition.IsEventQlQueryTruePrecondition("FROM e IN events WHERE e.type == 'io.eventsourcingdb.library.book-borrowed' PROJECT INTO COUNT() < 10") }
+    new[] { Precondition.IsEventQlTruePrecondition("FROM e IN events WHERE e.type == 'io.eventsourcingdb.library.book-borrowed' PROJECT INTO COUNT() < 10") }
 );
 ```
 
