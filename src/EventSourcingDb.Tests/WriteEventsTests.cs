@@ -150,7 +150,7 @@ public class WriteEventsTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task SupportsTheIsEventQlTruePrecondition()
+    public async Task SupportsTheIsEventQlQueryTruePrecondition()
     {
         var client = _container!.GetClient();
 
@@ -175,7 +175,7 @@ public class WriteEventsTests : IAsyncLifetime
         var error = await Assert.ThrowsAsync<HttpRequestException>(async () =>
             await client.WriteEventsAsync(
                 [secondEvent],
-                [Precondition.IsEventQlTruePrecondition("FROM e IN events PROJECT INTO COUNT() == 0")]
+                [Precondition.IsEventQlQueryTruePrecondition("FROM e IN events PROJECT INTO COUNT() == 0")]
             )
         );
 
