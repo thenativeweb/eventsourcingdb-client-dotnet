@@ -14,6 +14,6 @@ public record Precondition
     public static Precondition IsSubjectOnEventIdPrecondition(string subject, string eventId) =>
         new Precondition { Type = "isSubjectOnEventId", Payload = new IsSubjectOnEventIdPrecondition(subject, eventId) };
 
-    public static Precondition IsEventQlTruePrecondition(string query) =>
-        new Precondition { Type = "isEventQlTrue", Payload = new IsEventQlTruePrecondition(query) };
+    public static Precondition IsEventQlQueryTruePrecondition(string query) =>
+        new Precondition { Type = "isEventQlQueryTrue", Payload = new IsEventQlQueryTruePrecondition(query) };
 }
