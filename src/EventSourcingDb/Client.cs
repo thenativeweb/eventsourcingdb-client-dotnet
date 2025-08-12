@@ -435,4 +435,68 @@ public class Client
 
         return eventTypeResponse;
     }
+
+    public async IAsyncEnumerable<JsonElement> RunEventQlQueryAsync(
+        string query,
+        [EnumeratorCancellation] CancellationToken token = default)
+    {
+        var runEventQlQueryUrl = new Uri(_baseUrl, "/api/v1/run-eventql-query");
+
+        _logger.LogTrace("Trying to run EventQL query using url '{Url}'...", runEventQlQueryUrl);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, runEventQlQueryUrl);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiToken);
+        request.Content = new StringContent(
+            JsonSerializer.Serialize(new RequestBody(query), _defaultSerializerOptions),
+            Encoding.UTF8,
+            "application/json"
+        );
+
+        using var response = await _httpClient
+            .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token)
+            .ConfigureAwait(false);
+        if (response.StatusCode != HttpStatusCode.OK)
+        {
+            throw new HttpRequestException(
+                message: "Unexpected status code.", inner: null, statusCode: response.StatusCode
+            );
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
+        using var reader = new StreamReader(stream);
+
+        var queryResponse = await reader
+            .ReadLineAsync(token)
+            .ConfigureAwait(false);
+
+        while (queryResponse != null)
+        {
+            var line = JsonSerializer.Deserialize<ReadEventLine>(queryResponse, _defaultSerializerOptions);
+            if (line?.Type == null)
+            {
+                throw new InvalidValueException($"Failed to get the expected response, got null line from '{queryResponse}'.");
+            }
+
+            switch (line.Type)
+            {
+                case "row":
+                    yield return line.Payload;
+                    break;
+                case "error":
+                    if (line.Payload.ValueKind != JsonValueKind.String)
+                    {
+                        throw new InvalidValueException($"Received line of type 'error', but payload is not a string: '{line.Payload}'.");
+                    }
+                    throw new Exception(line.Payload.GetString() ?? "unknown error");
+                case "heartbeat":
+                    continue;
+                default:
+                    throw new Exception($"Failed to handle unsupported line type '{line.Type}'.");
+            }
+
+            queryResponse = await reader
+                .ReadLineAsync(token)
+                .ConfigureAwait(false);
+        }
+    }
 }
