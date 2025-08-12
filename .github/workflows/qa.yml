@@ -10,7 +10,7 @@ jobs:
 
     steps:
       - name: Clone repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Use .NET
         uses: actions/setup-dotnet@v4
       - name: Run QA
