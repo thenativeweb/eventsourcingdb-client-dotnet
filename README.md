@@ -217,6 +217,22 @@ await foreach (var @event in client.ReadEventsAsync(
 
 *Note that `FromLatestEvent` and `LowerBound` cannot be used at the same time.*
 
+## Running EventQL Queries
+
+To run an EventQL query, call the `RunEventQlQueryAsync` method and provide the query as an argument. The method returns an async stream, which you can iterate over using `await foreach`:
+
+```csharp
+await foreach (var row in client.RunEventQlQueryAsync(
+    "FROM e IN events PROJECT INTO e"))
+{
+    // ...
+}
+```
+
+*Note that each row returned by the async stream is of type `JsonElement` and matches the projection specified in your query.*
+
+*Optionally, you might provide a `CancellationToken`.*
+
 ## Observing Events
 
 To observe all future events of a subject, call the `ObserveEventsAsync` method and pass the subject and an options object. Set `Recursive` to `false` to observe only the events of the given subject.
