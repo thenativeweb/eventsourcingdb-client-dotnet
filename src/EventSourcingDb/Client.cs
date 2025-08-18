@@ -499,4 +499,29 @@ public class Client
                 .ConfigureAwait(false);
         }
     }
+
+    public async IAsyncEnumerable<TRow> RunEventQlQueryAsync<TRow>(
+        string query,
+        [EnumeratorCancellation] CancellationToken token = default)
+    {
+        await foreach (var jsonElement in RunEventQlQueryAsync(query, token))
+        {
+            TRow? row;
+            try
+            {
+                row = jsonElement.Deserialize<TRow>(_defaultSerializerOptions);
+            }
+            catch (JsonException ex)
+            {
+                throw new InvalidValueException($"Failed to deserialize query result into type '{typeof(TRow).Name}': {ex.Message}");
+            }
+
+            if (row == null)
+            {
+                throw new InvalidValueException($"Failed to deserialize query result into type '{typeof(TRow).Name}': result was null.");
+            }
+
+            yield return row;
+        }
+    }
 }
