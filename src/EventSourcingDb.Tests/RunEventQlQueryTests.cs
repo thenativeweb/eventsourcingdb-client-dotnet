@@ -6,7 +6,7 @@ using Xunit;
 
 namespace EventSourcingDb.Tests;
 
-public class RunEventQlTests : IAsyncLifetime
+public class RunEventQlQueryTests : IAsyncLifetime
 {
     private Container? _container;
 
@@ -159,12 +159,11 @@ public class RunEventQlTests : IAsyncLifetime
 
         await client.WriteEventsAsync([eventCandidate]);
 
-        // Try to deserialize Event results as a simple string - this should fail
         await Assert.ThrowsAsync<InvalidValueException>(async () =>
         {
             await foreach (var _ in client.RunEventQlQueryAsync<string>("FROM e IN events PROJECT INTO e"))
             {
-                // Should not reach here
+                throw new NotImplementedException();
             }
         });
     }
@@ -184,7 +183,6 @@ public class RunEventQlTests : IAsyncLifetime
 
         await client.WriteEventsAsync([eventCandidate]);
 
-        // Project to a nullable value - this should work even if result is null
         var rowsRead = new List<string?>();
         await foreach (var row in client.RunEventQlQueryAsync<string?>("FROM e IN events PROJECT INTO null"))
         {
