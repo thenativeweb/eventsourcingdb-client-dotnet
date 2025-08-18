@@ -229,9 +229,15 @@ await foreach (var row in client.RunEventQlQueryAsync(
 }
 ```
 
-*Note that each row returned by the async stream is of type `JsonElement` and matches the projection specified in your query.*
+Each row is returned as a `JsonElement`.
 
 *Optionally, you might provide a `CancellationToken`.*
+
+### Typed Results
+
+If you want results to be deserialized automatically, use the generic overload `RunEventQlQueryAsync<TRow>`. Each row is deserialized into `TRow` according to your projection.
+
+*When using the non-generic overload, each row is a `JsonElement`. With the generic overload, each row is a `TRow` instance. Ensure your projection matches the shape of `TRow`.*
 
 ## Observing Events
 
