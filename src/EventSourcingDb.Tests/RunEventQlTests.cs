@@ -169,5 +169,31 @@ public class RunEventQlTests : IAsyncLifetime
         });
     }
 
+    [Fact]
+    public async Task GenericVersionAllowsNullResults()
+    {
+        var client = _container!.GetClient();
+
+        var eventData = new EventData(23);
+        var eventCandidate = new EventCandidate(
+            Source: "https://www.eventsourcingdb.io",
+            Subject: "/test",
+            Type: "io.eventsourcingdb.test",
+            Data: eventData
+        );
+
+        await client.WriteEventsAsync([eventCandidate]);
+
+        // Project to a nullable value - this should work even if result is null
+        var rowsRead = new List<string?>();
+        await foreach (var row in client.RunEventQlQueryAsync<string?>("FROM e IN events PROJECT INTO null"))
+        {
+            rowsRead.Add(row);
+        }
+
+        Assert.Single(rowsRead);
+        Assert.Null(rowsRead[0]);
+    }
+
     private record struct EventData(int Value);
 }

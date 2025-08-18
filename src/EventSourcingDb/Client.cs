@@ -516,12 +516,7 @@ public class Client
                 throw new InvalidValueException($"Failed to deserialize query result into type '{typeof(TRow).Name}': {ex.Message}");
             }
 
-            if (row == null)
-            {
-                throw new InvalidValueException($"Failed to deserialize query result into type '{typeof(TRow).Name}': result was null.");
-            }
-
-            yield return row;
+            yield return row!;
         }
     }
 }
