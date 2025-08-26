@@ -15,7 +15,8 @@ public record Event(
     string Hash,
     string PredecessorHash,
     string? TraceParent,
-    string? TraceState
+    string? TraceState,
+    string? Signature
 )
 {
     private static readonly JsonSerializerOptions _defaultSerializerOptions =
@@ -33,7 +34,8 @@ public record Event(
             cloudEvent.Hash,
             cloudEvent.PredecessorHash,
             cloudEvent.TraceParent,
-            cloudEvent.TraceState)
+            cloudEvent.TraceState,
+            cloudEvent.Signature)
     { }
 
     public T? GetData<T>() =>

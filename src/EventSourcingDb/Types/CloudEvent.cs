@@ -14,5 +14,6 @@ internal record CloudEvent(
     string Hash,
     string PredecessorHash,
     string? TraceParent = null,
-    string? TraceState = null
+    string? TraceState = null,
+    string? Signature = null
 );
