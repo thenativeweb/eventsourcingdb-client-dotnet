@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -149,6 +150,39 @@ public class WriteEventsTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SupportsTheIsEventQlQueryTruePrecondition()
+    {
+        var client = _container!.GetClient();
+
+        var firstData = new EventData(23);
+        var secondData = new EventData(42);
+
+        var firstEvent = new EventCandidate(
+            Source: "https://www.eventsourcingdb.io",
+            Subject: "/test",
+            Type: "io.eventsourcingdb.test",
+            Data: firstData
+        );
+        var secondEvent = new EventCandidate(
+            Source: "https://www.eventsourcingdb.io",
+            Subject: "/test",
+            Type: "io.eventsourcingdb.test",
+            Data: secondData
+        );
+
+        _ = await client.WriteEventsAsync([firstEvent]);
+
+        var error = await Assert.ThrowsAsync<HttpRequestException>(async () =>
+            await client.WriteEventsAsync(
+                [secondEvent],
+                [Precondition.IsEventQlQueryTruePrecondition("FROM e IN events PROJECT INTO COUNT() == 0")]
+            )
+        );
+
+        Assert.Equal(HttpStatusCode.Conflict, error.StatusCode);
+    }
+
+    [Fact]
     public async Task DeserializesEventDataCorrectly()
     {
         var client = _container!.GetClient();
@@ -166,6 +200,27 @@ public class WriteEventsTests : IAsyncLifetime
 
         Assert.IsType<EventData>(data);
         Assert.Equal(eventCandidate.Data, data);
+    }
+
+    [Fact]
+    public async Task PassesErrorMessageInException()
+    {
+        var client = _container!.GetClient();
+
+        const string invalidSubject = "test"; // Subjects must start with a slash
+
+        var eventCandidate = new EventCandidate(
+            Source: "https://www.eventsourcingdb.io",
+            Subject: invalidSubject,
+            Type: "io.eventsourcingdb.test",
+            Data: new EventData(42)
+        );
+
+        var writeEvents = async () => await client.WriteEventsAsync([eventCandidate]);
+
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(writeEvents);
+
+        Assert.Contains("subject", ex.Message);
     }
 
     private record struct EventData(int Value);
