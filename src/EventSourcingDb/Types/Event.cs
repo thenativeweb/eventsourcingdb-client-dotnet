@@ -18,9 +18,6 @@ public record Event(
     string? TraceState
 )
 {
-    private static readonly JsonSerializerOptions _defaultSerializerOptions =
-        new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-
     internal Event(CloudEvent cloudEvent)
         : this(cloudEvent.SpecVersion,
             cloudEvent.Id,
@@ -36,9 +33,9 @@ public record Event(
             cloudEvent.TraceState)
     { }
 
-    public T? GetData<T>() =>
-        Data.Deserialize<T>(_defaultSerializerOptions);
+    public T? GetData<T>(JsonSerializerOptions? serializationOptions = null) =>
+        Data.Deserialize<T>(serializationOptions);
 
-    public object? GetData(Type type) =>
-        Data.Deserialize(type, _defaultSerializerOptions);
+    public object? GetData(Type type, JsonSerializerOptions? serializationOptions = null) =>
+        Data.Deserialize(type, serializationOptions);
 }

@@ -26,15 +26,14 @@ public class CustomSerializationOptionsTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task UsesCustomSerializationOptionsForWritingData()
+    public async Task UsesCustomSerializationOptionsToControlSerialization()
     {
-        var client = _container!.GetClient();
-
-        // How to use custom serialization options with client (maybe constructor overload)?
-        var customSerializerOptions = new JsonSerializerOptions
+        var serializerOptions = new JsonSerializerOptions
         {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             Converters = { new JsonStringEnumConverter() }
         };
+        var client = _container!.GetClient(serializerOptions);
 
         var eventCandidate = new EventCandidate(
             Source: "https://www.eventsourcingdb.io",
@@ -50,7 +49,7 @@ public class CustomSerializationOptionsTests : IAsyncLifetime
 
         Assert.Equal("{\"value\":\"Value1\"}", eventDataJsonString);
 
-        var deserializedEventData = writtenEvent.GetData<EventData>();
+        var deserializedEventData = writtenEvent.GetData<EventData>(serializerOptions);
 
         Assert.Equal(eventCandidate.Data, deserializedEventData);
     }
