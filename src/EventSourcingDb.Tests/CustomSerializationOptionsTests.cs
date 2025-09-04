@@ -49,7 +49,7 @@ public class CustomSerializationOptionsTests : IAsyncLifetime
 
         Assert.Equal("{\"value\":\"Value1\"}", eventDataJsonString);
 
-        var deserializedEventData = writtenEvent.GetData<EventData>(serializerOptions);
+        var deserializedEventData = writtenEvent.GetData<EventData>();
 
         Assert.Equal(eventCandidate.Data, deserializedEventData);
     }

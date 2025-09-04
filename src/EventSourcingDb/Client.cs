@@ -26,9 +26,14 @@ public class Client
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = false,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-
     };
-    private readonly JsonSerializerOptions? _dataSerializerOptions;
+    private readonly JsonSerializerOptions _dataSerializerOptions = new JsonSerializerOptions
+    {
+        PropertyNameCaseInsensitive = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = false,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
     private static readonly HttpClient _httpClient = new HttpClient(
         new SocketsHttpHandler
         {
@@ -59,7 +64,10 @@ public class Client
         _baseUrl = baseUrl;
         _apiToken = apiToken;
         _logger = logger ?? NullLogger<Client>.Instance;
-        _dataSerializerOptions = dataSerializerOptions;
+        if (dataSerializerOptions != null)
+        {
+            _dataSerializerOptions = dataSerializerOptions;
+        }
     }
 
     public async Task PingAsync(CancellationToken token = default)
@@ -183,7 +191,7 @@ public class Client
 
             if (eventsResponse == null) throw new InvalidValueException("Failed to parse response.");
 
-            var result = eventsResponse.Select(cloudEvent => new Event(cloudEvent)).ToArray();
+            var result = eventsResponse.Select(cloudEvent => new Event(cloudEvent, _dataSerializerOptions)).ToArray();
 
             _logger.LogTrace("Written '{Count}' events using url '{Url}' successfully.", result.Length, writeEventsUrl);
 
@@ -253,7 +261,7 @@ public class Client
                         throw new InvalidValueException($"Failed to get the expected response, unable to deserialize '{line.Payload}' into cloud event.");
                     }
 
-                    yield return new Event(cloudEvent);
+                    yield return new Event(cloudEvent, _dataSerializerOptions);
 
                     break;
                 case "error":
@@ -329,7 +337,7 @@ public class Client
                         throw new InvalidValueException($"Failed to get the expected response, unable to deserialize '{line.Payload}' into cloud event.");
                     }
 
-                    yield return new Event(cloudEvent);
+                    yield return new Event(cloudEvent, _dataSerializerOptions);
 
                     break;
                 case "error":
