@@ -96,6 +96,19 @@ var writtenEvents = await client.WriteEventsAsync(
 
 *Note that according to the CloudEvents standard, event IDs must be of type string.*
 
+### Using the `IsEventQlQueryTrue` precondition
+
+If you want to write events depending on an EventQL query, use the `IsEventQlQueryTruePrecondition`:
+
+```csharp
+var writtenEvents = await client.WriteEventsAsync(
+    new[] { @event },
+    new[] { Precondition.IsEventQlQueryTruePrecondition("FROM e IN events WHERE e.type == 'io.eventsourcingdb.library.book-borrowed' PROJECT INTO COUNT() < 10") }
+);
+```
+
+*Note that the query must return a single row with a single value, which is interpreted as a boolean.*
+
 ## Reading Events
 
 To read all events of a subject, call the `ReadEventsAsync` method and pass the subject and an options object. Set `Recursive` to `false` to ensure that only events of the given subject are returned, not events of nested subjects.
@@ -204,6 +217,28 @@ await foreach (var @event in client.ReadEventsAsync(
 
 *Note that `FromLatestEvent` and `LowerBound` cannot be used at the same time.*
 
+## Running EventQL Queries
+
+To run an EventQL query, call the `RunEventQlQueryAsync` method and provide the query as an argument. The method returns an async stream, which you can iterate over using `await foreach`:
+
+```csharp
+await foreach (var row in client.RunEventQlQueryAsync(
+    "FROM e IN events PROJECT INTO e"))
+{
+    // ...
+}
+```
+
+Each row is returned as a `JsonElement`.
+
+*Optionally, you might provide a `CancellationToken`.*
+
+### Typed Results
+
+If you want results to be deserialized automatically, use the generic overload `RunEventQlQueryAsync<TRow>`. Each row is deserialized into `TRow` according to your projection.
+
+*When using the non-generic overload, each row is a `JsonElement`. With the generic overload, each row is a `TRow` instance. Ensure your projection matches the shape of `TRow`.*
+
 ## Observing Events
 
 To observe all future events of a subject, call the `ObserveEventsAsync` method and pass the subject and an options object. Set `Recursive` to `false` to observe only the events of the given subject.
@@ -294,7 +329,26 @@ await foreach (var @event in client.ObserveEventsAsync(
 
 *Note that `FromLatestEvent` and `LowerBound` cannot be used at the same time.*
 
-### Using Testcontainers
+## Listing Event Types
+
+To list all event types, call the `ReadEventTypesAsync` method. The method returns an async stream:
+
+```csharp
+await foreach (var eventType in client.ReadEventTypesAsync())
+{
+    // ...
+}
+```
+
+## Listing a Specific Event Type
+
+To list a specific event type, call the `ReadEventTypeAsync` method with the event type as an argument. The method returns the detailed event type, which includes the schema:
+
+```csharp
+var eventType = await client.ReadEventTypeAsync("io.eventsourcingdb.library.book-acquired");
+```
+
+## Using Testcontainers
 
 Import the `Container` class, create an instance, call the `StartAsync` method to run a test container, get a client, run your test code, and finally call the `StopAsync` method to stop the test container:
 
