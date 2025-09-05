@@ -26,7 +26,13 @@ public class Client
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = false,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-
+    };
+    private readonly JsonSerializerOptions _dataSerializerOptions = new JsonSerializerOptions
+    {
+        PropertyNameCaseInsensitive = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = false,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
     private static readonly HttpClient _httpClient = new HttpClient(
         new SocketsHttpHandler
@@ -38,11 +44,30 @@ public class Client
     private readonly string _apiToken;
     private readonly ILogger<Client> _logger;
 
+    public Client(Uri baseUrl, string apiToken)
+    {
+        _baseUrl = baseUrl;
+        _apiToken = apiToken;
+        _logger = NullLogger<Client>.Instance;
+    }
+
     public Client(Uri baseUrl, string apiToken, ILogger<Client>? logger = null)
     {
         _baseUrl = baseUrl;
         _apiToken = apiToken;
         _logger = logger ?? NullLogger<Client>.Instance;
+    }
+
+    public Client(Uri baseUrl, string apiToken, JsonSerializerOptions? dataSerializerOptions = null, ILogger<Client>? logger = null)
+        : this(baseUrl, apiToken, logger)
+    {
+        _baseUrl = baseUrl;
+        _apiToken = apiToken;
+        _logger = logger ?? NullLogger<Client>.Instance;
+        if (dataSerializerOptions != null)
+        {
+            _dataSerializerOptions = dataSerializerOptions;
+        }
     }
 
     public async Task PingAsync(CancellationToken token = default)
@@ -141,10 +166,13 @@ public class Client
 
         try
         {
+            var candidatesWithSerializedData =
+                events.Select(e => e with { Data = JsonSerializer.SerializeToElement(e.Data, _dataSerializerOptions) });
+
             using var request = new HttpRequestMessage(HttpMethod.Post, writeEventsUrl);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiToken);
             request.Content = new StringContent(
-                JsonSerializer.Serialize(new { events, preconditions }, _defaultSerializerOptions),
+                JsonSerializer.Serialize(new { events = candidatesWithSerializedData, preconditions }, _defaultSerializerOptions),
                 Encoding.UTF8,
                 "application/json"
             );
@@ -164,7 +192,7 @@ public class Client
 
             if (eventsResponse == null) throw new InvalidValueException("Failed to parse response.");
 
-            var result = eventsResponse.Select(cloudEvent => new Event(cloudEvent)).ToArray();
+            var result = eventsResponse.Select(cloudEvent => new Event(cloudEvent, _dataSerializerOptions)).ToArray();
 
             _logger.LogTrace("Written '{Count}' events using url '{Url}' successfully.", result.Length, writeEventsUrl);
 
@@ -234,7 +262,7 @@ public class Client
                         throw new InvalidValueException($"Failed to get the expected response, unable to deserialize '{line.Payload}' into cloud event.");
                     }
 
-                    yield return new Event(cloudEvent);
+                    yield return new Event(cloudEvent, _dataSerializerOptions);
 
                     break;
                 case "error":
@@ -310,7 +338,7 @@ public class Client
                         throw new InvalidValueException($"Failed to get the expected response, unable to deserialize '{line.Payload}' into cloud event.");
                     }
 
-                    yield return new Event(cloudEvent);
+                    yield return new Event(cloudEvent, _dataSerializerOptions);
 
                     break;
                 case "error":
@@ -509,7 +537,19 @@ public class Client
             TRow? row;
             try
             {
-                row = jsonElement.Deserialize<TRow>(_defaultSerializerOptions);
+                if(typeof(TRow) == typeof(Event))
+                {
+                    var cloudEvent = jsonElement.Deserialize<CloudEvent>(_defaultSerializerOptions);
+                    if (cloudEvent == null)
+                    {
+                        throw new InvalidValueException($"Failed to get the expected response, unable to deserialize '{jsonElement}' into cloud event.");
+                    }
+                    row = (TRow)(object)new Event(cloudEvent, _dataSerializerOptions);
+                }
+                else
+                {
+                    row = jsonElement.Deserialize<TRow>(_defaultSerializerOptions);
+                }
             }
             catch (JsonException ex)
             {

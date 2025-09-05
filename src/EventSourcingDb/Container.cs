@@ -1,8 +1,8 @@
 using System;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNet.Testcontainers.Builders;
-using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
 
 namespace EventSourcingDb;
@@ -92,8 +92,8 @@ public class Container
         }
     }
 
-    public Client GetClient()
+    public Client GetClient(JsonSerializerOptions? dataSerializerOptions = null)
     {
-        return new Client(GetBaseUrl(), GetApiToken());
+        return new Client(GetBaseUrl(), GetApiToken(), dataSerializerOptions);
     }
 }
