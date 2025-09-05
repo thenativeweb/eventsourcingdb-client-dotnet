@@ -537,7 +537,19 @@ public class Client
             TRow? row;
             try
             {
-                row = jsonElement.Deserialize<TRow>(_defaultSerializerOptions);
+                if(typeof(TRow) == typeof(Event))
+                {
+                    var cloudEvent = jsonElement.Deserialize<CloudEvent>(_defaultSerializerOptions);
+                    if (cloudEvent == null)
+                    {
+                        throw new InvalidValueException($"Failed to get the expected response, unable to deserialize '{jsonElement}' into cloud event.");
+                    }
+                    row = (TRow)(object)new Event(cloudEvent, _dataSerializerOptions);
+                }
+                else
+                {
+                    row = jsonElement.Deserialize<TRow>(_defaultSerializerOptions);
+                }
             }
             catch (JsonException ex)
             {
