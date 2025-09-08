@@ -533,7 +533,7 @@ public class Client
         TRow? row;
         try
         {
-            if(typeof(TRow) == typeof(Event))
+            if (typeof(TRow) == typeof(Event))
             {
                 var cloudEvent = payload.Deserialize<CloudEvent>(_defaultSerializerOptions);
                 if (cloudEvent == null)
