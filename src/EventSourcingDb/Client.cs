@@ -464,7 +464,7 @@ public class Client
         return eventTypeResponse;
     }
 
-    public async IAsyncEnumerable<JsonElement> RunEventQlQueryAsync(
+    public async IAsyncEnumerable<TRow> RunEventQlQueryAsync<TRow>(
         string query,
         [EnumeratorCancellation] CancellationToken token = default)
     {
@@ -508,7 +508,7 @@ public class Client
             switch (line.Type)
             {
                 case "row":
-                    yield return line.Payload;
+                    yield return DeserializeRow<TRow>(line.Payload);
                     break;
                 case "error":
                     if (line.Payload.ValueKind != JsonValueKind.String)
@@ -528,35 +528,30 @@ public class Client
         }
     }
 
-    public async IAsyncEnumerable<TRow> RunEventQlQueryAsync<TRow>(
-        string query,
-        [EnumeratorCancellation] CancellationToken token = default)
+    private TRow DeserializeRow<TRow>(JsonElement payload)
     {
-        await foreach (var jsonElement in RunEventQlQueryAsync(query, token))
+        TRow? row;
+        try
         {
-            TRow? row;
-            try
+            if(typeof(TRow) == typeof(Event))
             {
-                if(typeof(TRow) == typeof(Event))
+                var cloudEvent = payload.Deserialize<CloudEvent>(_defaultSerializerOptions);
+                if (cloudEvent == null)
                 {
-                    var cloudEvent = jsonElement.Deserialize<CloudEvent>(_defaultSerializerOptions);
-                    if (cloudEvent == null)
-                    {
-                        throw new InvalidValueException($"Failed to get the expected response, unable to deserialize '{jsonElement}' into cloud event.");
-                    }
-                    row = (TRow)(object)new Event(cloudEvent, _dataSerializerOptions);
+                    throw new InvalidValueException($"Failed to get the expected response, unable to deserialize '{payload}' into cloud event.");
                 }
-                else
-                {
-                    row = jsonElement.Deserialize<TRow>(_defaultSerializerOptions);
-                }
+                row = (TRow)(object)new Event(cloudEvent, _dataSerializerOptions);
             }
-            catch (JsonException ex)
+            else
             {
-                throw new InvalidValueException($"Failed to deserialize query result into type '{typeof(TRow).Name}': {ex.Message}");
+                row = payload.Deserialize<TRow>(_defaultSerializerOptions);
             }
-
-            yield return row!;
         }
+        catch (JsonException ex)
+        {
+            throw new InvalidValueException($"Failed to deserialize query result into type '{typeof(TRow).Name}': {ex.Message}");
+        }
+
+        return row!;
     }
 }
