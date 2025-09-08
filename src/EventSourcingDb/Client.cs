@@ -42,28 +42,25 @@ public class Client
     );
     private readonly Uri _baseUrl;
     private readonly string _apiToken;
-    private readonly ILogger<Client> _logger;
+    private readonly ILogger<Client> _logger = NullLogger<Client>.Instance;
 
     public Client(Uri baseUrl, string apiToken)
     {
         _baseUrl = baseUrl;
         _apiToken = apiToken;
-        _logger = NullLogger<Client>.Instance;
     }
 
-    public Client(Uri baseUrl, string apiToken, ILogger<Client>? logger = null)
+    public Client(Uri baseUrl, string apiToken, ILogger<Client>? logger = null) : this(baseUrl, apiToken)
     {
-        _baseUrl = baseUrl;
-        _apiToken = apiToken;
-        _logger = logger ?? NullLogger<Client>.Instance;
+        if (logger != null)
+        {
+            _logger = logger;
+        }
     }
 
     public Client(Uri baseUrl, string apiToken, JsonSerializerOptions? dataSerializerOptions = null, ILogger<Client>? logger = null)
         : this(baseUrl, apiToken, logger)
     {
-        _baseUrl = baseUrl;
-        _apiToken = apiToken;
-        _logger = logger ?? NullLogger<Client>.Instance;
         if (dataSerializerOptions != null)
         {
             _dataSerializerOptions = dataSerializerOptions;
