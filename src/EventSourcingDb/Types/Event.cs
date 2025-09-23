@@ -33,7 +33,7 @@ public record Event
         TraceParent = cloudEvent.TraceParent;
         TraceState = cloudEvent.TraceState;
 
-        _serializerOptions = serializerOptions;
+        _serializerOptions = serializerOptions ?? throw new ArgumentNullException(nameof(serializerOptions));
     }
 
     private readonly JsonSerializerOptions _serializerOptions;

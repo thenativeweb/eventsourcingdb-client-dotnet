@@ -164,8 +164,9 @@ public class Client
 
         try
         {
-            var candidatesWithSerializedData =
-                events.Select(e => e with { Data = JsonSerializer.SerializeToElement(e.Data, _dataSerializerOptions) });
+            var candidatesWithSerializedData = events
+                .Select(e => e with { Data = JsonSerializer.SerializeToElement(e.Data, _dataSerializerOptions) })
+                .ToArray();
 
             using var request = new HttpRequestMessage(HttpMethod.Post, writeEventsUrl);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiToken);
