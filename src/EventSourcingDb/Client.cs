@@ -527,28 +527,30 @@ public class Client
 
     private TRow DeserializeRow<TRow>(JsonElement payload)
     {
-        TRow? row;
         try
         {
-            if (typeof(TRow) == typeof(Event))
+            if (typeof(TRow) != typeof(Event))
             {
-                var cloudEvent = payload.Deserialize<CloudEvent>(_defaultSerializerOptions);
-                if (cloudEvent == null)
+                var row = payload.Deserialize<TRow>(_defaultSerializerOptions);
+                if (row is null)
                 {
-                    throw new InvalidValueException($"Failed to get the expected response, unable to deserialize '{payload}' into cloud event.");
+                    throw new InvalidValueException($"Failed to get the expected response, unable to deserialize into '{typeof(TRow).Name}'.");
                 }
-                row = (TRow)(object)new Event(cloudEvent, _dataSerializerOptions);
+
+                return row;
             }
-            else
+
+            var cloudEvent = payload.Deserialize<CloudEvent>(_defaultSerializerOptions);
+            if (cloudEvent == null)
             {
-                row = payload.Deserialize<TRow>(_defaultSerializerOptions);
+                throw new InvalidValueException($"Failed to get the expected response, unable to deserialize '{payload}' into cloud event.");
             }
+
+            return (TRow)(object)new Event(cloudEvent, _dataSerializerOptions);
         }
         catch (JsonException ex)
         {
             throw new InvalidValueException($"Failed to deserialize query result into type '{typeof(TRow).Name}': {ex.Message}");
         }
-
-        return row!;
     }
 }

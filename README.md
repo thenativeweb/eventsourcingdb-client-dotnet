@@ -228,18 +228,14 @@ await foreach (var @event in client.ReadEventsAsync(
 To run an EventQL query, call the `RunEventQlQueryAsync<TRow>` method and provide the query as an argument. The method returns an async stream, which you can iterate over using `await foreach`:
 
 ```csharp
-await foreach (var row in client.RunEventQlQueryAsync(
-    "FROM e IN events PROJECT INTO { count: COUNT() }"))
+await foreach (var row in client.RunEventQlQueryAsync<Event>(
+    "FROM e IN events PROJECT INTO e"))
 {
     // ...
 }
 ```
 
-Each row is deserialized automatically and returned as `TRow`, according to your projection.
-
-When projecting into events ("... PROJECT into e"), use `Event` as generic type and obtain the deserialized data as described below.
-
-*Ensure your projection matches the shape of `TRow`.*
+Each row is deserialized automatically and returned as `TRow`, according to your projection. Ensure your projection matches the shape of `TRow`.
 
 *Optionally, you might provide a `CancellationToken`.*
 

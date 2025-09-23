@@ -39,7 +39,7 @@ public class CustomSerializationOptionsTests : IAsyncLifetime
             Source: "https://www.eventsourcingdb.io",
             Subject: "/test",
             Type: "io.eventsourcingdb.test",
-            Data: new EventData(MyEnum.Value1)
+            Data: new EventData(MyEnum.Foo)
         );
 
         var writtenEvents = await client.WriteEventsAsync([eventCandidate]);
@@ -47,7 +47,7 @@ public class CustomSerializationOptionsTests : IAsyncLifetime
         var writtenEvent = writtenEvents[0];
         var eventDataJsonString = writtenEvent.Data.ToString();
 
-        Assert.Equal("{\"value\":\"Value1\"}", eventDataJsonString);
+        Assert.Equal("{\"value\":\"Foo\"}", eventDataJsonString);
 
         var deserializedEventData = writtenEvent.GetData<EventData>();
 
@@ -58,7 +58,7 @@ public class CustomSerializationOptionsTests : IAsyncLifetime
 
     private enum MyEnum
     {
-        Value1,
-        Value2
+        Foo,
+        Bar
     }
 }
