@@ -64,7 +64,7 @@ public class RunEventQlQueryTests : IAsyncLifetime
 
         await client.WriteEventsAsync([firstEvent, secondEvent]);
 
-        var rowsRead = new List<Event>();
+        var rowsRead = new List<Event?>();
         await foreach (var row in client.RunEventQlQueryAsync<Event>("FROM e IN events PROJECT INTO e"))
         {
             rowsRead.Add(row);

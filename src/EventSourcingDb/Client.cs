@@ -44,26 +44,27 @@ public class Client
     private readonly string _apiToken;
     private readonly ILogger<Client> _logger = NullLogger<Client>.Instance;
 
-    public Client(Uri baseUrl, string apiToken)
+    public Client(Uri baseUrl, string apiToken) : this(baseUrl, apiToken, null)
     {
-        _baseUrl = baseUrl;
-        _apiToken = apiToken;
     }
 
-    public Client(Uri baseUrl, string apiToken, ILogger<Client>? logger = null) : this(baseUrl, apiToken)
+    public Client(Uri baseUrl, string apiToken, ILogger<Client>? logger = null) : this(baseUrl, apiToken, null, logger)
     {
-        if (logger != null)
-        {
-            _logger = logger;
-        }
     }
 
     public Client(Uri baseUrl, string apiToken, JsonSerializerOptions? dataSerializerOptions = null, ILogger<Client>? logger = null)
-        : this(baseUrl, apiToken, logger)
     {
+        _baseUrl = baseUrl;
+        _apiToken = apiToken;
+
         if (dataSerializerOptions != null)
         {
             _dataSerializerOptions = dataSerializerOptions;
+        }
+
+        if (logger != null)
+        {
+            _logger = logger;
         }
     }
 
@@ -461,7 +462,7 @@ public class Client
         return eventTypeResponse;
     }
 
-    public async IAsyncEnumerable<TRow> RunEventQlQueryAsync<TRow>(
+    public async IAsyncEnumerable<TRow?> RunEventQlQueryAsync<TRow>(
         string query,
         [EnumeratorCancellation] CancellationToken token = default)
     {
@@ -525,19 +526,13 @@ public class Client
         }
     }
 
-    private TRow DeserializeRow<TRow>(JsonElement payload)
+    private TRow? DeserializeRow<TRow>(JsonElement payload)
     {
         try
         {
             if (typeof(TRow) != typeof(Event))
             {
-                var row = payload.Deserialize<TRow>(_defaultSerializerOptions);
-                if (row is null)
-                {
-                    throw new InvalidValueException($"Failed to get the expected response, unable to deserialize into '{typeof(TRow).Name}'.");
-                }
-
-                return row;
+                return payload.Deserialize<TRow>(_defaultSerializerOptions);
             }
 
             var cloudEvent = payload.Deserialize<CloudEvent>(_defaultSerializerOptions);
