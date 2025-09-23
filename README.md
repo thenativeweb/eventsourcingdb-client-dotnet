@@ -47,7 +47,7 @@ Optionally, you might provide a `CancellationToken`.
 
 ## Serializing and Deserializing
 
-System.Text.Json is used for JSON serialization and deserialization.
+Basically, `System.Text.Json` is used for JSON serialization and deserialization.
 
 You can override the default settings by either using JSON attributes on your types and properties or by providing your own `JsonSerializerOptions` when creating the `Client`.
 
