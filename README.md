@@ -45,7 +45,7 @@ await client.VerifyApiTokenAsync();
 
 Optionally, you might provide a `CancellationToken`.
 
-## Serialization
+## Serializing and Deserializing
 
 System.Text.Json is used for JSON serialization and deserialization.
 
