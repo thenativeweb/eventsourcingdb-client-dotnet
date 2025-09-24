@@ -42,7 +42,7 @@ public class Client
     );
     private readonly Uri _baseUrl;
     private readonly string _apiToken;
-    private readonly ILogger<Client> _logger = NullLogger<Client>.Instance;
+    private readonly ILogger<Client> _logger;
 
     public Client(Uri baseUrl, string apiToken) : this(baseUrl, apiToken, null)
     {
@@ -62,10 +62,7 @@ public class Client
             _dataSerializerOptions = dataSerializerOptions;
         }
 
-        if (logger != null)
-        {
-            _logger = logger;
-        }
+        _logger = logger ?? NullLogger<Client>.Instance;
     }
 
     public async Task PingAsync(CancellationToken token = default)
@@ -189,7 +186,7 @@ public class Client
                 .ReadFromJsonAsync<CloudEvent[]>(_defaultSerializerOptions, token)
                 .ConfigureAwait(false);
 
-            if (eventsResponse == null) throw new InvalidValueException("Failed to parse response.");
+            if (eventsResponse is null) throw new InvalidValueException("Failed to parse response.");
 
             var result = eventsResponse.Select(cloudEvent => new Event(cloudEvent, _dataSerializerOptions)).ToArray();
 
@@ -243,7 +240,7 @@ public class Client
         while (eventResponse != null)
         {
             var line = JsonSerializer.Deserialize<ReadEventLine>(eventResponse, _defaultSerializerOptions);
-            if (line?.Type == null)
+            if (line?.Type is null)
             {
                 throw new InvalidValueException($"Failed to get the expected response, got null line from '{eventResponse}'.");
             }
@@ -256,7 +253,7 @@ public class Client
                         throw new InvalidValueException($"Received line of type 'event', but payload is not an object: '{line.Payload}'.");
                     }
                     var cloudEvent = line.Payload.Deserialize<CloudEvent>(_defaultSerializerOptions);
-                    if (cloudEvent == null)
+                    if (cloudEvent is null)
                     {
                         throw new InvalidValueException($"Failed to get the expected response, unable to deserialize '{line.Payload}' into cloud event.");
                     }
@@ -319,7 +316,7 @@ public class Client
         while (eventResponse != null)
         {
             var line = JsonSerializer.Deserialize<ReadEventLine>(eventResponse, _defaultSerializerOptions);
-            if (line?.Type == null)
+            if (line?.Type is null)
             {
                 throw new InvalidValueException($"Failed to get the expected response, got null line from '{eventResponse}'.");
             }
@@ -332,7 +329,7 @@ public class Client
                         throw new InvalidValueException($"Received line of type 'event', but payload is not an object: '{line.Payload}'.");
                     }
                     var cloudEvent = line.Payload.Deserialize<CloudEvent>(_defaultSerializerOptions);
-                    if (cloudEvent == null)
+                    if (cloudEvent is null)
                     {
                         throw new InvalidValueException($"Failed to get the expected response, unable to deserialize '{line.Payload}' into cloud event.");
                     }
@@ -388,7 +385,7 @@ public class Client
         while (eventTypesResponse != null)
         {
             var line = JsonSerializer.Deserialize<ReadEventLine>(eventTypesResponse, _defaultSerializerOptions);
-            if (line?.Type == null)
+            if (line?.Type is null)
             {
                 throw new InvalidValueException($"Failed to get the expected response, got null line from '{eventTypesResponse}'.");
             }
@@ -401,7 +398,7 @@ public class Client
                         throw new InvalidValueException($"Received line of type 'eventType', but payload is not an object: '{line.Payload}'.");
                     }
                     var eventType = line.Payload.Deserialize<EventType>(_defaultSerializerOptions);
-                    if (eventType == null)
+                    if (eventType is null)
                     {
                         throw new InvalidValueException($"Failed to get the expected response, unable to deserialize '{line.Payload}' into event type.");
                     }
@@ -455,7 +452,7 @@ public class Client
             .ReadFromJsonAsync<EventType>(_defaultSerializerOptions, token)
             .ConfigureAwait(false);
 
-        if (eventTypeResponse == null)
+        if (eventTypeResponse is null)
         {
             throw new InvalidValueException($"Failed to get the expected response, got null for event type '{eventType}'.");
         }
@@ -499,7 +496,7 @@ public class Client
         while (queryResponse != null)
         {
             var line = JsonSerializer.Deserialize<ReadEventLine>(queryResponse, _defaultSerializerOptions);
-            if (line?.Type == null)
+            if (line?.Type is null)
             {
                 throw new InvalidValueException($"Failed to get the expected response, got null line from '{queryResponse}'.");
             }
@@ -537,7 +534,7 @@ public class Client
             }
 
             var cloudEvent = payload.Deserialize<CloudEvent>(_defaultSerializerOptions);
-            if (cloudEvent == null)
+            if (cloudEvent is null)
             {
                 throw new InvalidValueException($"Failed to get the expected response, unable to deserialize '{payload}' into cloud event.");
             }
