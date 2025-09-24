@@ -71,11 +71,11 @@ public class RunEventQlQueryTests : IAsyncLifetime
         }
 
         Assert.Collection(rowsRead,
-            @event =>
+            row =>
             {
-                Assert.NotNull(@event);
-                Assert.Equal("0", @event.Id);
-                Assert.Equal(firstData, @event.GetData<EventData>());
+                Assert.NotNull(row);
+                Assert.Equal("0", row.Id);
+                Assert.Equal(firstData, row.GetData<EventData>());
             },
             row =>
             {

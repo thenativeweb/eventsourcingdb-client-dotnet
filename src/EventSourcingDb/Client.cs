@@ -539,6 +539,7 @@ public class Client
                 throw new InvalidValueException($"Failed to get the expected response, unable to deserialize '{payload}' into cloud event.");
             }
 
+            // At design time, there is no type conversion between TRow and Event, so we need to cast to object first
             return (TRow)(object)new Event(cloudEvent, _dataSerializerOptions);
         }
         catch (JsonException ex)
