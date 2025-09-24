@@ -45,13 +45,19 @@ await client.VerifyApiTokenAsync();
 
 Optionally, you might provide a `CancellationToken`.
 
+## Serializing and Deserializing
+
+Basically, `System.Text.Json` is used for JSON serialization and deserialization.
+
+You can override the default settings by either using JSON attributes on your types and properties or by providing your own `JsonSerializerOptions` when creating the `Client`.
+
 ## Writing Events
 
 Call the `WriteEventsAsync` method and provide a collection of events. You do not have to set all event fields – some are automatically added by the server.
 
 Specify `Source`, `Subject`, `Type`, and `Data` according to the [CloudEvents](https://docs.eventsourcingdb.io/fundamentals/cloud-events/) format.
 
-For `Data`, you may provide any object that is serializable to JSON. It is recommended to use properties with JSON attributes to control the serialization.
+For `Data`, you may provide any object that is serializable to JSON.
 
 The method returns a list of written events, including the fields added by the server:
 
@@ -219,25 +225,19 @@ await foreach (var @event in client.ReadEventsAsync(
 
 ## Running EventQL Queries
 
-To run an EventQL query, call the `RunEventQlQueryAsync` method and provide the query as an argument. The method returns an async stream, which you can iterate over using `await foreach`:
+To run an EventQL query, call the `RunEventQlQueryAsync<TRow>` method and provide the query as an argument. The method returns an async stream, which you can iterate over using `await foreach`:
 
 ```csharp
-await foreach (var row in client.RunEventQlQueryAsync(
+await foreach (var row in client.RunEventQlQueryAsync<Event>(
     "FROM e IN events PROJECT INTO e"))
 {
     // ...
 }
 ```
 
-Each row is returned as a `JsonElement`.
+Each row is deserialized automatically and returned as `TRow`, according to your projection. Ensure your projection matches the shape of `TRow`.
 
 *Optionally, you might provide a `CancellationToken`.*
-
-### Typed Results
-
-If you want results to be deserialized automatically, use the generic overload `RunEventQlQueryAsync<TRow>`. Each row is deserialized into `TRow` according to your projection.
-
-*When using the non-generic overload, each row is a `JsonElement`. With the generic overload, each row is a `TRow` instance. Ensure your projection matches the shape of `TRow`.*
 
 ## Observing Events
 
