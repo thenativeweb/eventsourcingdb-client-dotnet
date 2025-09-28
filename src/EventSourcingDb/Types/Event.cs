@@ -63,8 +63,7 @@ public record Event
         var metadataHash = SHA256.HashData(Encoding.UTF8.GetBytes(metadata));
         var metadataHashHex = BitConverter.ToString(metadataHash).Replace("-", "").ToLowerInvariant();
 
-        var dataBytes = JsonSerializer.SerializeToUtf8Bytes(Data);
-        var dataHash = SHA256.HashData(dataBytes);
+        var dataHash = SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(Data));
         var dataHashHex = BitConverter.ToString(dataHash).Replace("-", "").ToLowerInvariant();
 
         var finalHash = SHA256.HashData(Encoding.UTF8.GetBytes(metadataHashHex + dataHashHex));
@@ -72,7 +71,7 @@ public record Event
 
         if (finalHashHex != Hash)
         {
-            throw new InvalidOperationException("Hash verification failed");
+            throw new Exception("Hash verification failed");
         }
     }
 }
