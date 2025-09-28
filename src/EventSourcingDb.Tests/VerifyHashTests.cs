@@ -62,8 +62,8 @@ public class VerifyHashTests : IAsyncLifetime
 
         var @event = writtenEvents.Single();
 
-        var invalidHash =  SHA256.HashData("invalid-hash"u8.ToArray());
-        var invalidHashHex = BitConverter.ToString(invalidHash).Replace("-", "").ToLowerInvariant();
+        var invalidHash= SHA256.HashData("invalid-hash"u8.ToArray());
+        var invalidHashHex= BitConverter.ToString(invalidHash).Replace("-", "").ToLowerInvariant();
 
         typeof(Event)
             .GetField("<Hash>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)?
