@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using EventSourcingDb.Types;
@@ -31,21 +30,24 @@ public class ObserveEventsTests : IAsyncLifetime
     public async Task ObserveNoEventsIfTheDatabaseIsEmpty()
     {
         var client = _container!.GetClient();
-        var readEvents = new List<Event>();
+        var didReadEvents = false;
 
         var options = new ObserveEventsOptions(Recursive: true);
         using var source = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
 
         try
         {
-            readEvents = await client.ObserveEventsAsync("/", options, source.Token).ToListAsync(CancellationToken.None);
+            await foreach (var _ in client.ObserveEventsAsync("/", options, source.Token))
+            {
+                didReadEvents = true;
+            }
         }
         catch (OperationCanceledException)
         {
             // Ignored, we cancel on our own
         }
 
-        Assert.Empty(readEvents);
+        Assert.False(didReadEvents);
     }
 
     [Fact]
@@ -77,7 +79,10 @@ public class ObserveEventsTests : IAsyncLifetime
 
         try
         {
-            observedEvents = await client.ObserveEventsAsync("/", options, source.Token).ToListAsync(CancellationToken.None);
+            await foreach (var eventResult in client.ObserveEventsAsync("/", options, source.Token))
+            {
+                observedEvents.Add(eventResult);
+            }
         }
         catch (OperationCanceledException)
         {
@@ -116,7 +121,10 @@ public class ObserveEventsTests : IAsyncLifetime
 
         try
         {
-            observedEvents = await client.ObserveEventsAsync("/", options, source.Token).ToListAsync(CancellationToken.None);
+            await foreach (var eventResult in client.ObserveEventsAsync("/", options, source.Token))
+            {
+                observedEvents.Add(eventResult);
+            }
         }
         catch (OperationCanceledException)
         {
@@ -169,7 +177,10 @@ public class ObserveEventsTests : IAsyncLifetime
 
         try
         {
-            observedEvents = await client.ObserveEventsAsync("/", options, source.Token).ToListAsync(CancellationToken.None);
+            await foreach (var eventResult in client.ObserveEventsAsync("/", options, source.Token))
+            {
+                observedEvents.Add(eventResult);
+            }
         }
         catch (OperationCanceledException)
         {
