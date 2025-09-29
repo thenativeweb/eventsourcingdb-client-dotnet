@@ -1,5 +1,5 @@
 using System;
-using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -34,14 +34,9 @@ public class ReadEventTypesTest : IAsyncLifetime
     public async Task ReadsNoEventTypesIfTheDatabaseIsEmpty()
     {
         var client = _container!.GetClient();
-        var didReadEvenTypes = false;
+        var eventTypesRead = await client.ReadEventTypesAsync().ToListAsync();
 
-        await foreach (var _ in client.ReadEventTypesAsync())
-        {
-            didReadEvenTypes = true;
-        }
-
-        Assert.False(didReadEvenTypes);
+        Assert.Empty(eventTypesRead);
     }
 
     [Fact]
@@ -67,20 +62,15 @@ public class ReadEventTypesTest : IAsyncLifetime
 
         await client.WriteEventsAsync([firstEvent, secondEvent]);
 
-        var readEventTypes = new List<EventType>();
+        var eventTypesRead = await client.ReadEventTypesAsync().ToListAsync();
 
-        await foreach (var eventType in client.ReadEventTypesAsync())
-        {
-            readEventTypes.Add(eventType);
-        }
-
-        Assert.Equal(2, readEventTypes.Count);
-        Assert.Equal(readEventTypes[0], new EventType(
+        Assert.Equal(2, eventTypesRead.Count);
+        Assert.Equal(eventTypesRead[0], new EventType(
             Type: "io.eventsourcingdb.v1.test",
             IsPhantom: false,
             Schema: null
         ));
-        Assert.Equal(readEventTypes[1], new EventType(
+        Assert.Equal(eventTypesRead[1], new EventType(
             Type: "io.eventsourcingdb.v2.test",
             IsPhantom: false,
             Schema: null
@@ -115,15 +105,10 @@ public class ReadEventTypesTest : IAsyncLifetime
         using var response = await _httpClient.SendAsync(request);
         response.EnsureSuccessStatusCode();
 
-        var readEventTypes = new List<EventType>();
+        var eventTypesRead = await client.ReadEventTypesAsync().ToListAsync();
 
-        await foreach (var eventType in client.ReadEventTypesAsync())
-        {
-            readEventTypes.Add(eventType);
-        }
-
-        Assert.Single(readEventTypes);
-        Assert.Collection(readEventTypes, eventType =>
+        Assert.Single(eventTypesRead);
+        Assert.Collection(eventTypesRead, eventType =>
         {
             Assert.Equal("io.eventsourcingdb.v1.test", eventType.Type);
             Assert.True(eventType.IsPhantom);
