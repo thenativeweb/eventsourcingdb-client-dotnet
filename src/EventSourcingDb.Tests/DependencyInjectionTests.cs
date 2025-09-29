@@ -47,9 +47,8 @@ public sealed class DependencyInjectionTests : IAsyncLifetime
 
         var serviceProvider = services.BuildServiceProvider();
 
-        var client = serviceProvider.GetService<Client>();
+        var client = serviceProvider.GetService<IClient>();
 
         await client!.PingAsync();
     }
-
 }

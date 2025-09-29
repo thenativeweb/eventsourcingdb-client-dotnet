@@ -24,7 +24,7 @@ public static class ServiceCollectionExtensions
             services.PostConfigure(configureOptions);
         }
 
-        services.AddScoped<Client>(sp =>
+        services.AddScoped<IClient>(sp =>
             {
                 var options = sp.GetRequiredService<IOptions<EventSourcingDbOptions>>().Value;
                 var logger = sp.GetRequiredService<ILogger<Client>>();
