@@ -71,7 +71,7 @@ public record Event
 
         if (finalHashHex != Hash)
         {
-            throw new Exception("Hash verification failed");
+            throw new Exception("Hash verification failed.");
         }
     }
 }
