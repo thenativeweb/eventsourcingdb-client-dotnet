@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json;
 using System.Threading.Tasks;
 using EventSourcingDb.Types;
 using Xunit;
@@ -32,13 +31,9 @@ public class RunEventQlQueryTests : IAsyncLifetime
     {
         var client = _container!.GetClient();
 
-        var didReadRows = false;
-        await foreach (var _ in client.RunEventQlQueryAsync<Event>("FROM e IN events PROJECT INTO e"))
-        {
-            didReadRows = true;
-        }
+        var rowsRead = await client.RunEventQlQueryAsync<Event>("FROM e IN events PROJECT INTO e").ToListAsync();
 
-        Assert.False(didReadRows);
+        Assert.Empty(rowsRead);
     }
 
     [Fact]
@@ -64,11 +59,7 @@ public class RunEventQlQueryTests : IAsyncLifetime
 
         await client.WriteEventsAsync([firstEvent, secondEvent]);
 
-        var rowsRead = new List<Event?>();
-        await foreach (var row in client.RunEventQlQueryAsync<Event>("FROM e IN events PROJECT INTO e"))
-        {
-            rowsRead.Add(row);
-        }
+        var rowsRead = await client.RunEventQlQueryAsync<Event>("FROM e IN events PROJECT INTO e").ToListAsync();
 
         Assert.Collection(rowsRead,
             row =>
@@ -110,15 +101,11 @@ public class RunEventQlQueryTests : IAsyncLifetime
 
         await client.WriteEventsAsync(candidates);
 
-        var rowsRead = new List<EventDataAggregation>();
         const string query =
             "FROM e IN events " +
             "WHERE e.type == \"io.eventsourcingdb.test\"" +
             "PROJECT INTO { average: AVG(e.data.value), count: COUNT() } ";
-        await foreach (var row in client.RunEventQlQueryAsync<EventDataAggregation>(query))
-        {
-            rowsRead.Add(row);
-        }
+        var rowsRead = await client.RunEventQlQueryAsync<EventDataAggregation>(query).ToListAsync();
 
         var aggregation = Assert.Single(rowsRead);
         Assert.Equal(32.5, aggregation.Average);
@@ -164,11 +151,7 @@ public class RunEventQlQueryTests : IAsyncLifetime
 
         await client.WriteEventsAsync([eventCandidate]);
 
-        var rowsRead = new List<string?>();
-        await foreach (var row in client.RunEventQlQueryAsync<string?>("FROM e IN events PROJECT INTO null"))
-        {
-            rowsRead.Add(row);
-        }
+        var rowsRead = await client.RunEventQlQueryAsync<string?>("FROM e IN events PROJECT INTO null").ToListAsync();
 
         Assert.Single(rowsRead);
         Assert.Null(rowsRead[0]);

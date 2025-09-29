@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using EventSourcingDb.Types;
 using Xunit;
@@ -28,14 +28,9 @@ public class ReadEventsTests : IAsyncLifetime
     public async Task ReadsNoEventsIfTheDatabaseIsEmpty()
     {
         var client = _container!.GetClient();
-        var didReadEvents = false;
+        var eventsRead = await client.ReadEventsAsync("/", new ReadEventsOptions(Recursive: true)).ToListAsync();
 
-        await foreach (var _ in client.ReadEventsAsync("/", new ReadEventsOptions(Recursive: true)))
-        {
-            didReadEvents = true;
-        }
-
-        Assert.False(didReadEvents);
+        Assert.Empty(eventsRead);
     }
 
     [Fact]
@@ -61,12 +56,7 @@ public class ReadEventsTests : IAsyncLifetime
 
         await client.WriteEventsAsync([firstEvent, secondEvent]);
 
-        var foundEvents = new List<Event>();
-
-        await foreach (var eventResult in client.ReadEventsAsync("/test", new ReadEventsOptions(Recursive: false)))
-        {
-            foundEvents.Add(eventResult);
-        }
+        var foundEvents = await client.ReadEventsAsync("/test", new ReadEventsOptions(Recursive: false)).ToListAsync();
 
         Assert.Equal(2, foundEvents.Count);
     }
@@ -94,12 +84,7 @@ public class ReadEventsTests : IAsyncLifetime
 
         await client.WriteEventsAsync([firstEvent, secondEvent]);
 
-        var foundEvents = new List<Event>();
-
-        await foreach (var eventResult in client.ReadEventsAsync("/", new ReadEventsOptions(Recursive: true)))
-        {
-            foundEvents.Add(eventResult);
-        }
+        var foundEvents = await client.ReadEventsAsync("/", new ReadEventsOptions(Recursive: true)).ToListAsync();
 
         Assert.Equal(2, foundEvents.Count);
     }
@@ -127,13 +112,9 @@ public class ReadEventsTests : IAsyncLifetime
 
         await client.WriteEventsAsync([firstEvent, secondEvent]);
 
-        var foundEvents = new List<Event>();
         var options = new ReadEventsOptions(Recursive: false, Order: Order.Chronological);
 
-        await foreach (var eventResult in client.ReadEventsAsync("/test", options))
-        {
-            foundEvents.Add(eventResult);
-        }
+        var foundEvents = await client.ReadEventsAsync("/test", options).ToListAsync();
 
         Assert.Collection(foundEvents,
             foundEvent =>
@@ -172,13 +153,9 @@ public class ReadEventsTests : IAsyncLifetime
 
         await client.WriteEventsAsync([firstEvent, secondEvent]);
 
-        var foundEvents = new List<Event>();
         var options = new ReadEventsOptions(Recursive: false, Order: Order.Antichronological);
 
-        await foreach (var eventResult in client.ReadEventsAsync("/test", options))
-        {
-            foundEvents.Add(eventResult);
-        }
+        var foundEvents = await client.ReadEventsAsync("/test", options).ToListAsync();
 
         Assert.Collection(foundEvents,
             foundEvent =>
@@ -217,13 +194,9 @@ public class ReadEventsTests : IAsyncLifetime
 
         await client.WriteEventsAsync([firstEvent, secondEvent]);
 
-        var foundEvents = new List<Event>();
         var options = new ReadEventsOptions(Recursive: false, LowerBound: new Bound("1", BoundType.Inclusive));
 
-        await foreach (var eventResult in client.ReadEventsAsync("/test", options))
-        {
-            foundEvents.Add(eventResult);
-        }
+        var foundEvents = await client.ReadEventsAsync("/test", options).ToListAsync();
 
         Assert.Single(foundEvents);
         Assert.Collection(foundEvents,
@@ -258,13 +231,9 @@ public class ReadEventsTests : IAsyncLifetime
 
         await client.WriteEventsAsync([firstEvent, secondEvent]);
 
-        var foundEvents = new List<Event>();
         var options = new ReadEventsOptions(Recursive: false, UpperBound: new Bound("0", BoundType.Inclusive));
 
-        await foreach (var eventResult in client.ReadEventsAsync("/test", options))
-        {
-            foundEvents.Add(eventResult);
-        }
+        var foundEvents = await client.ReadEventsAsync("/test", options).ToListAsync();
 
         Assert.Single(foundEvents);
         Assert.Collection(foundEvents,
@@ -299,7 +268,6 @@ public class ReadEventsTests : IAsyncLifetime
 
         await client.WriteEventsAsync([firstEvent, secondEvent]);
 
-        var foundEvents = new List<Event>();
         var options = new ReadEventsOptions(
             Recursive: false,
             FromLatestEvent: new ReadFromLatestEvent(
@@ -309,10 +277,7 @@ public class ReadEventsTests : IAsyncLifetime
             )
         );
 
-        await foreach (var eventResult in client.ReadEventsAsync("/test", options))
-        {
-            foundEvents.Add(eventResult);
-        }
+        var foundEvents = await client.ReadEventsAsync("/test", options).ToListAsync();
 
         Assert.Single(foundEvents);
         Assert.Collection(foundEvents,
