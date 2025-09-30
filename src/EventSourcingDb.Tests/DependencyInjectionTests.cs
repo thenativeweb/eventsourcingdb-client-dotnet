@@ -48,7 +48,12 @@ public sealed class DependencyInjectionTests : IAsyncLifetime
 
         var serviceProvider = services.BuildServiceProvider();
 
-        var client = serviceProvider.GetService<IClient>() ?? throw new Exception("IClient not registered");
+        var client = serviceProvider.GetService<IClient>();
+
+        if (client is null)
+        {
+            throw new Exception("IClient is not registered.");
+        }
 
         await client.PingAsync();
     }
