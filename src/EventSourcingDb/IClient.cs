@@ -20,7 +20,6 @@ public interface IClient
     /// <summary>
     /// Writes one or more events to the event store. According to the preconditions, either all or none of the events are written.
     /// </summary>
-    /// <returns>The events if successfully written</returns>
     Task<IReadOnlyList<Event>> WriteEventsAsync(
         IEnumerable<EventCandidate> events,
         IEnumerable<Precondition>? preconditions = null,
@@ -28,7 +27,7 @@ public interface IClient
     );
 
     /// <summary>
-    /// Reads events for a given subject. The stream is closed after all events are read.
+    /// Reads events for a given subject. The enumeration ends when all events are read.
     /// </summary>
     IAsyncEnumerable<Event> ReadEventsAsync(
         string subject,
@@ -37,7 +36,7 @@ public interface IClient
     );
 
     /// <summary>
-    /// Observes events for a given subject. The stream remains open and new events are sent as they are written.
+    /// Observes events for a given subject. The enumeration continues as new events are written to the store.
     /// </summary>
     IAsyncEnumerable<Event> ObserveEventsAsync(
         string subject,
@@ -61,7 +60,7 @@ public interface IClient
     );
 
     /// <summary>
-    /// Runs an EventQL query and returns a stream of rows according to the projection from the query.
+    /// Runs an EventQL query and returns rows according to the projection from the query.
     /// </summary>
     IAsyncEnumerable<TRow?> RunEventQlQueryAsync<TRow>(
         string query,

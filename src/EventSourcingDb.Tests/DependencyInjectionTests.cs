@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using EventSourcingDb.DependencyInjection;
@@ -47,8 +48,8 @@ public sealed class DependencyInjectionTests : IAsyncLifetime
 
         var serviceProvider = services.BuildServiceProvider();
 
-        var client = serviceProvider.GetService<IClient>();
+        var client = serviceProvider.GetService<IClient>() ?? throw new Exception("IClient not registered");
 
-        await client!.PingAsync();
+        await client.PingAsync();
     }
 }
