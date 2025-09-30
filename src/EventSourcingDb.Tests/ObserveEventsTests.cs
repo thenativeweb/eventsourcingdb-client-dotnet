@@ -7,29 +7,12 @@ using Xunit;
 
 namespace EventSourcingDb.Tests;
 
-public class ObserveEventsTests : IAsyncLifetime
+public class ObserveEventsTests : EventSourcingDbTests
 {
-    private Container? _container;
-
-    public async Task InitializeAsync()
-    {
-        var imageVersion = DockerfileHelper.GetImageVersionFromDockerfile();
-        _container = new Container().WithImageTag(imageVersion);
-        await _container.StartAsync();
-    }
-
-    public async Task DisposeAsync()
-    {
-        if (_container is not null)
-        {
-            await _container.StopAsync();
-        }
-    }
-
     [Fact]
     public async Task ObserveNoEventsIfTheDatabaseIsEmpty()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
         var didReadEvents = false;
 
         var options = new ObserveEventsOptions(Recursive: true);
@@ -53,7 +36,7 @@ public class ObserveEventsTests : IAsyncLifetime
     [Fact]
     public async Task ObserveAllEventsFromTheGivenSubject()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
 
         var firstData = new EventData(23);
         var secondData = new EventData(42);
@@ -95,7 +78,7 @@ public class ObserveEventsTests : IAsyncLifetime
     [Fact]
     public async Task ObservesWithLowerBound()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
 
         var firstData = new EventData(23);
         var secondData = new EventData(42);
@@ -144,7 +127,7 @@ public class ObserveEventsTests : IAsyncLifetime
     [Fact]
     public async Task ObservesFromLatestEvent()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
 
         var firstData = new EventData(23);
         var secondData = new EventData(42);

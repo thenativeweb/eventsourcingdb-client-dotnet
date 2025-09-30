@@ -6,29 +6,12 @@ using Xunit;
 
 namespace EventSourcingDb.Tests;
 
-public sealed class PingTests : IAsyncLifetime
+public sealed class PingTests : EventSourcingDbTests
 {
-    private Container? _container;
-
-    public async Task InitializeAsync()
-    {
-        var imageVersion = DockerfileHelper.GetImageVersionFromDockerfile();
-        _container = new Container().WithImageTag(imageVersion);
-        await _container.StartAsync();
-    }
-
-    public async Task DisposeAsync()
-    {
-        if (_container is not null)
-        {
-            await _container.StopAsync();
-        }
-    }
-
     [Fact]
     public async Task DoesNotThrowIfServerIsReachable()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
 
         // Should not throw.
         await client.PingAsync();
@@ -37,8 +20,8 @@ public sealed class PingTests : IAsyncLifetime
     [Fact]
     public async Task ThrowsIfServerIsNotReachable()
     {
-        var port = _container!.GetMappedPort();
-        var apiToken = _container.GetApiToken();
+        var port = Container!.GetMappedPort();
+        var apiToken = Container.GetApiToken();
 
         var invalidUri = new Uri($"http://non-existent-host:{port}/");
         var client = new Client(invalidUri, apiToken);

@@ -4,29 +4,12 @@ using Xunit;
 
 namespace EventSourcingDb.Tests;
 
-public class VerifyApiTokenTests : IAsyncLifetime
+public class VerifyApiTokenTests : EventSourcingDbTests
 {
-    private Container? _container;
-
-    public async Task InitializeAsync()
-    {
-        var imageVersion = DockerfileHelper.GetImageVersionFromDockerfile();
-        _container = new Container().WithImageTag(imageVersion);
-        await _container.StartAsync();
-    }
-
-    public async Task DisposeAsync()
-    {
-        if (_container is not null)
-        {
-            await _container.StopAsync();
-        }
-    }
-
     [Fact]
     public async Task DoesNotThrowIfTheTokenIsValid()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
 
         // Should not throw.
         await client.VerifyApiTokenAsync();
@@ -35,8 +18,8 @@ public class VerifyApiTokenTests : IAsyncLifetime
     [Fact]
     public async Task ThrowsIfTheTokenIsInvalid()
     {
-        var url = _container!.GetBaseUrl();
-        var invalidApiToken = $"{_container.GetApiToken()}-invalid";
+        var url = Container!.GetBaseUrl();
+        var invalidApiToken = $"{Container.GetApiToken()}-invalid";
 
         var client = new Client(url, invalidApiToken);
 

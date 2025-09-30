@@ -7,29 +7,12 @@ using Xunit;
 
 namespace EventSourcingDb.Tests;
 
-public class RunEventQlQueryTests : IAsyncLifetime
+public class RunEventQlQueryTests : EventSourcingDbTests
 {
-    private Container? _container;
-
-    public async Task InitializeAsync()
-    {
-        var imageVersion = DockerfileHelper.GetImageVersionFromDockerfile();
-        _container = new Container().WithImageTag(imageVersion);
-        await _container.StartAsync();
-    }
-
-    public async Task DisposeAsync()
-    {
-        if (_container is not null)
-        {
-            await _container.StopAsync();
-        }
-    }
-
     [Fact]
     public async Task ReadsNoRowsIfTheQueryDoesNotReturnAnyRows()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
 
         var rowsRead = await client.RunEventQlQueryAsync<Event>("FROM e IN events PROJECT INTO e").ToListAsync();
 
@@ -39,7 +22,7 @@ public class RunEventQlQueryTests : IAsyncLifetime
     [Fact]
     public async Task ReadsAllRowsTheQueryReturnsEvents()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
 
         var firstData = new EventData(23);
         var secondData = new EventData(42);
@@ -80,7 +63,7 @@ public class RunEventQlQueryTests : IAsyncLifetime
     [Fact]
     public async Task ReadsAllRowsTheQueryReturnsAggregation()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
 
         var firstData = new EventData(23);
         var secondData = new EventData(42);
@@ -115,7 +98,7 @@ public class RunEventQlQueryTests : IAsyncLifetime
     [Fact]
     public async Task ThrowsOnDeserializationError()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
 
         var eventData = new EventData(23);
         var eventCandidate = new EventCandidate(
@@ -139,7 +122,7 @@ public class RunEventQlQueryTests : IAsyncLifetime
     [Fact]
     public async Task AllowsNullResults()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
 
         var eventData = new EventData(23);
         var eventCandidate = new EventCandidate(

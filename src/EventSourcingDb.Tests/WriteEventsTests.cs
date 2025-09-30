@@ -8,29 +8,12 @@ using Xunit;
 
 namespace EventSourcingDb.Tests;
 
-public class WriteEventsTests : IAsyncLifetime
+public class WriteEventsTests : EventSourcingDbTests
 {
-    private Container? _container;
-
-    public async Task InitializeAsync()
-    {
-        var imageVersion = DockerfileHelper.GetImageVersionFromDockerfile();
-        _container = new Container().WithImageTag(imageVersion);
-        await _container.StartAsync();
-    }
-
-    public async Task DisposeAsync()
-    {
-        if (_container is not null)
-        {
-            await _container.StopAsync();
-        }
-    }
-
     [Fact]
     public async Task WritesASingleEvent()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
 
         var eventCandidate = new EventCandidate(
             Source: "https://www.eventsourcingdb.io",
@@ -48,7 +31,7 @@ public class WriteEventsTests : IAsyncLifetime
     [Fact]
     public async Task WritesMultipleEvents()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
 
         var firstData = new EventData(23);
         var secondData = new EventData(42);
@@ -86,7 +69,7 @@ public class WriteEventsTests : IAsyncLifetime
     [Fact]
     public async Task SupportsTheIsSubjectPristinePrecondition()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
 
         var firstData = new EventData(23);
         var secondData = new EventData(42);
@@ -119,7 +102,7 @@ public class WriteEventsTests : IAsyncLifetime
     [Fact]
     public async Task SupportsTheIsSubjectOnEventIdPrecondition()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
 
         var firstData = new EventData(23);
         var secondData = new EventData(42);
@@ -152,7 +135,7 @@ public class WriteEventsTests : IAsyncLifetime
     [Fact]
     public async Task SupportsTheIsEventQlQueryTruePrecondition()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
 
         var firstData = new EventData(23);
         var secondData = new EventData(42);
@@ -185,7 +168,7 @@ public class WriteEventsTests : IAsyncLifetime
     [Fact]
     public async Task DeserializesEventDataCorrectly()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
 
         var eventCandidate = new EventCandidate(
             Source: "https://www.eventsourcingdb.io",
@@ -205,7 +188,7 @@ public class WriteEventsTests : IAsyncLifetime
     [Fact]
     public async Task PassesErrorMessageInException()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
 
         const string invalidSubject = "test"; // Subjects must start with a slash
 
