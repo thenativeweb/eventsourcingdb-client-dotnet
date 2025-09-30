@@ -8,30 +8,13 @@ using Xunit;
 
 namespace EventSourcingDb.Tests;
 
-public sealed class DependencyInjectionTests : IAsyncLifetime
+public sealed class DependencyInjectionTests : EventSourcingDbTests
 {
-    private Container? _container;
-
-    public async Task InitializeAsync()
-    {
-        var imageVersion = DockerfileHelper.GetImageVersionFromDockerfile();
-        _container = new Container().WithImageTag(imageVersion);
-        await _container.StartAsync();
-    }
-
-    public async Task DisposeAsync()
-    {
-        if (_container is not null)
-        {
-            await _container.StopAsync();
-        }
-    }
-
     [Fact]
     public async Task ClientIsAvailableUsingDependencyInjection()
     {
-        var url = _container!.GetBaseUrl();
-        var apiToken = _container!.GetApiToken();
+        var url = Container!.GetBaseUrl();
+        var apiToken = Container!.GetApiToken();
 
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(

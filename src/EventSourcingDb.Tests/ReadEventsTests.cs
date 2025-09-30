@@ -5,29 +5,12 @@ using Xunit;
 
 namespace EventSourcingDb.Tests;
 
-public class ReadEventsTests : IAsyncLifetime
+public class ReadEventsTests : EventSourcingDbTests
 {
-    private Container? _container;
-
-    public async Task InitializeAsync()
-    {
-        var imageVersion = DockerfileHelper.GetImageVersionFromDockerfile();
-        _container = new Container().WithImageTag(imageVersion);
-        await _container.StartAsync();
-    }
-
-    public async Task DisposeAsync()
-    {
-        if (_container is not null)
-        {
-            await _container.StopAsync();
-        }
-    }
-
     [Fact]
     public async Task ReadsNoEventsIfTheDatabaseIsEmpty()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
         var eventsRead = await client.ReadEventsAsync("/", new ReadEventsOptions(Recursive: true)).ToListAsync();
 
         Assert.Empty(eventsRead);
@@ -36,7 +19,7 @@ public class ReadEventsTests : IAsyncLifetime
     [Fact]
     public async Task ReadsAllEventsFromTheGivenSubject()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
 
         var firstData = new EventData(23);
         var secondData = new EventData(42);
@@ -64,7 +47,7 @@ public class ReadEventsTests : IAsyncLifetime
     [Fact]
     public async Task ReadsRecursively()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
 
         var firstData = new EventData(23);
         var secondData = new EventData(42);
@@ -92,7 +75,7 @@ public class ReadEventsTests : IAsyncLifetime
     [Fact]
     public async Task ReadsChronologically()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
 
         var firstData = new EventData(23);
         var secondData = new EventData(42);
@@ -133,7 +116,7 @@ public class ReadEventsTests : IAsyncLifetime
     [Fact]
     public async Task ReadsAntiChronologically()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
 
         var firstData = new EventData(23);
         var secondData = new EventData(42);
@@ -174,7 +157,7 @@ public class ReadEventsTests : IAsyncLifetime
     [Fact]
     public async Task ReadsWithLowerBound()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
 
         var firstData = new EventData(23);
         var secondData = new EventData(42);
@@ -211,7 +194,7 @@ public class ReadEventsTests : IAsyncLifetime
     [Fact]
     public async Task ReadsWithUpperBound()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
 
         var firstData = new EventData(23);
         var secondData = new EventData(42);
@@ -248,7 +231,7 @@ public class ReadEventsTests : IAsyncLifetime
     [Fact]
     public async Task ReadsFromLatestEvent()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
 
         var firstData = new EventData(23);
         var secondData = new EventData(42);

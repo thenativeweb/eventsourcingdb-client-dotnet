@@ -11,29 +11,12 @@ using Xunit;
 
 namespace EventSourcingDb.Tests;
 
-public class ReadEventTypesTest : IAsyncLifetime
+public class ReadEventTypesTest : EventSourcingDbTests
 {
-    private Container? _container;
-
-    public async Task InitializeAsync()
-    {
-        var imageVersion = DockerfileHelper.GetImageVersionFromDockerfile();
-        _container = new Container().WithImageTag(imageVersion);
-        await _container.StartAsync();
-    }
-
-    public async Task DisposeAsync()
-    {
-        if (_container is not null)
-        {
-            await _container.StopAsync();
-        }
-    }
-
     [Fact]
     public async Task ReadsNoEventTypesIfTheDatabaseIsEmpty()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
         var eventTypesRead = await client.ReadEventTypesAsync().ToListAsync();
 
         Assert.Empty(eventTypesRead);
@@ -42,7 +25,7 @@ public class ReadEventTypesTest : IAsyncLifetime
     [Fact]
     public async Task ReadsAllEventTypes()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
 
         var firstData = new EventData(23);
         var secondData = new EventData(42);
@@ -80,10 +63,10 @@ public class ReadEventTypesTest : IAsyncLifetime
     [Fact]
     public async Task SupportsReadingEventSchemas()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
 
         // TODO: simplify this once schema registration is supported by the client.
-        var registerEventSchemaUrl = new Uri(_container.GetBaseUrl(), "/api/v1/register-event-schema");
+        var registerEventSchemaUrl = new Uri(Container.GetBaseUrl(), "/api/v1/register-event-schema");
         var eventSchema = new
         {
             Type = "object",
@@ -92,7 +75,7 @@ public class ReadEventTypesTest : IAsyncLifetime
         };
 
         using var request = new HttpRequestMessage(HttpMethod.Post, registerEventSchemaUrl);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _container.GetApiToken());
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Container.GetApiToken());
         request.Content = new StringContent(
             JsonSerializer.Serialize(new
             {

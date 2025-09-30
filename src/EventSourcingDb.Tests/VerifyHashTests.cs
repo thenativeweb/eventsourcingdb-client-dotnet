@@ -9,29 +9,12 @@ using Xunit;
 
 namespace EventSourcingDb.Tests;
 
-public class VerifyHashTests : IAsyncLifetime
+public class VerifyHashTests : EventSourcingDbTests
 {
-    private Container? _container;
-
-    public async Task InitializeAsync()
-    {
-        var imageVersion = DockerfileHelper.GetImageVersionFromDockerfile();
-        _container = new Container().WithImageTag(imageVersion);
-        await _container.StartAsync();
-    }
-
-    public async Task DisposeAsync()
-    {
-        if (_container is not null)
-        {
-            await _container.StopAsync();
-        }
-    }
-
     [Fact]
     public async Task VerifyHash()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
 
         var eventCandidate = new EventCandidate(
             Source: "https://www.eventsourcingdb.io",
@@ -49,7 +32,7 @@ public class VerifyHashTests : IAsyncLifetime
     [Fact]
     public async Task ThrowsWhenHashVerificationFails()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
 
         var eventCandidate = new EventCandidate(
             Source: "https://www.eventsourcingdb.io",

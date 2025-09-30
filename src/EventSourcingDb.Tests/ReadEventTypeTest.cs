@@ -7,29 +7,12 @@ using Xunit;
 
 namespace EventSourcingDb.Tests;
 
-public class ReadEventTypeTest : IAsyncLifetime
+public class ReadEventTypeTest : EventSourcingDbTests
 {
-    private Container? _container;
-
-    public async Task InitializeAsync()
-    {
-        var imageVersion = DockerfileHelper.GetImageVersionFromDockerfile();
-        _container = new Container().WithImageTag(imageVersion);
-        await _container.StartAsync();
-    }
-
-    public async Task DisposeAsync()
-    {
-        if (_container is not null)
-        {
-            await _container.StopAsync();
-        }
-    }
-
     [Fact]
     public async Task FailsIfTheEventTypeDoesNotExist()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
 
         try
         {
@@ -49,7 +32,7 @@ public class ReadEventTypeTest : IAsyncLifetime
     [Fact]
     public async Task FailsIfTheEventTypeIsMalformed()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
 
         try
         {
@@ -69,7 +52,7 @@ public class ReadEventTypeTest : IAsyncLifetime
     [Fact]
     public async Task ReadsAnExistingEventType()
     {
-        var client = _container!.GetClient();
+        var client = Container!.GetClient();
 
         var firstData = new EventData(42);
 
