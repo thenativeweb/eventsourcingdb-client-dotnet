@@ -18,7 +18,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace EventSourcingDb;
 
-public class Client
+public class Client : IClient
 {
     private static readonly JsonSerializerOptions _defaultSerializerOptions = new JsonSerializerOptions
     {

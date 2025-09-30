@@ -92,7 +92,7 @@ public class Container
         }
     }
 
-    public Client GetClient(JsonSerializerOptions? dataSerializerOptions = null)
+    public IClient GetClient(JsonSerializerOptions? dataSerializerOptions = null)
     {
         return new Client(GetBaseUrl(), GetApiToken(), dataSerializerOptions);
     }

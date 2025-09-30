@@ -348,6 +348,37 @@ To list a specific event type, call the `ReadEventTypeAsync` method with the eve
 var eventType = await client.ReadEventTypeAsync("io.eventsourcingdb.library.book-acquired");
 ```
 
+## Dependency Injection
+
+If you use Microsoft's dependency injection framework, you can just call the `AddEventSourcingDb` extension method to register the `Client` as a scoped service:
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+builder.serices.AddEventSourcingDb(builder.Configuration);
+```
+
+The client is configured according to your `IConfiguration` state, e.g. by setting environment variables or with the `EventSourcingDb` section in `appsettings.json`:
+
+```json
+{
+  "EventSourcingDb": {
+    "BaseUrl": "http://localhost:3000",
+    "ApiToken": "secret"
+  }
+}
+```
+
+If you need to configure the client at runtime, you can provide a configuration action:
+
+```csharp
+builder.Services.AddEventSourcingDb(builder.Configuration, options =>
+{
+    options.BaseUrl = new Uri("http://localhost:3001");
+    options.ApiToken = "anotherSecret";
+});
+```
+
+
 ## Using Testcontainers
 
 Import the `Container` class, create an instance, call the `StartAsync` method to run a test container, get a client, run your test code, and finally call the `StopAsync` method to stop the test container:
