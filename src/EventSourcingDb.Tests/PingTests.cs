@@ -24,7 +24,10 @@ public sealed class PingTests : EventSourcingDbTests
         var apiToken = Container.GetApiToken();
 
         var invalidUri = new Uri($"http://non-existent-host:{port}/");
-        var client = new Client(invalidUri, apiToken);
+
+        var httpClient = HttpClientFactory.GetConfiguredDefaultClient(invalidUri, apiToken);
+
+        var client = new Client(httpClient);
 
         await Assert.ThrowsAsync<HttpRequestException>(async () =>
         {

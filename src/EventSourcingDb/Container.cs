@@ -94,6 +94,8 @@ public class Container
 
     public IClient GetClient(JsonSerializerOptions? dataSerializerOptions = null)
     {
-        return new Client(GetBaseUrl(), GetApiToken(), dataSerializerOptions);
+        var httpClient = HttpClientFactory.GetConfiguredDefaultClient(GetBaseUrl(), GetApiToken());
+
+        return new Client(httpClient, dataSerializerOptions);
     }
 }
