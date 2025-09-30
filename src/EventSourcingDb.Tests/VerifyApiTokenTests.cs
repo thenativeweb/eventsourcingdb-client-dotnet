@@ -1,4 +1,5 @@
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -19,9 +20,11 @@ public class VerifyApiTokenTests : EventSourcingDbTests
     public async Task ThrowsIfTheTokenIsInvalid()
     {
         var url = Container!.GetBaseUrl();
-        var invalidApiToken = $"{Container.GetApiToken()}-invalid";
+        var invalidApiToken = $"{Container!.GetApiToken()}-invalid";
 
-        var client = new Client(url, invalidApiToken);
+        var httpClient = HttpClientFactory.GetConfiguredDefaultClient(url, invalidApiToken);
+
+        var client = new Client(httpClient);
 
         await Assert.ThrowsAsync<HttpRequestException>(async () =>
         {

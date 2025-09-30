@@ -1,4 +1,5 @@
 using System;
+using System.Net.Http.Headers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -24,12 +25,16 @@ public static class ServiceCollectionExtensions
             services.PostConfigure(configureOptions);
         }
 
-        services.AddScoped<IClient>(sp =>
+        services.AddHttpClient<IClient, Client>((client, sp) =>
             {
                 var options = sp.GetRequiredService<IOptions<EventSourcingDbOptions>>().Value;
+
+                client.BaseAddress = options.BaseUrl;
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", options.ApiToken);
+
                 var logger = sp.GetRequiredService<ILogger<Client>>();
 
-                return new Client(options.BaseUrl, options.ApiToken, logger);
+                return new Client(client, logger);
             }
         );
     }
