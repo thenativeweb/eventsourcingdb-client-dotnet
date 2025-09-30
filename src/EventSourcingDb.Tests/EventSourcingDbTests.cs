@@ -1,9 +1,9 @@
-﻿using System.Threading.Tasks;
+using System.Threading.Tasks;
 using Xunit;
 
 namespace EventSourcingDb.Tests;
 
-public class EventSourcingDbTests: IAsyncLifetime
+public class EventSourcingDbTests : IAsyncLifetime
 {
     protected Container? Container { get; private set; }
 
