@@ -1,4 +1,5 @@
 using System;
+using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -11,7 +12,8 @@ public static class ServiceCollectionExtensions
     public static void AddEventSourcingDb(
         this IServiceCollection services,
         IConfiguration configuration,
-        Action<EventSourcingDbOptions>? configureOptions = null
+        Action<EventSourcingDbOptions>? configureOptions = null,
+        JsonSerializerOptions? jsonSerializerOptions = null
     )
     {
         services
@@ -29,7 +31,7 @@ public static class ServiceCollectionExtensions
                 var options = sp.GetRequiredService<IOptions<EventSourcingDbOptions>>().Value;
                 var logger = sp.GetRequiredService<ILogger<Client>>();
 
-                return new Client(options.BaseUrl, options.ApiToken, logger);
+                return new Client(options.BaseUrl, options.ApiToken, jsonSerializerOptions, logger);
             }
         );
     }

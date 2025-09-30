@@ -49,7 +49,7 @@ Optionally, you might provide a `CancellationToken`.
 
 Basically, `System.Text.Json` is used for JSON serialization and deserialization.
 
-You can override the default settings by either using JSON attributes on your types and properties or by providing your own `JsonSerializerOptions` when creating the `Client`.
+You can override the default settings by either using JSON attributes on your types and properties or by providing your own `JsonSerializerOptions` when creating the `Client` both manually or via [dependency injection](#dependency-injection).
 
 ## Writing Events
 
