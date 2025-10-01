@@ -4,20 +4,32 @@ using System.Threading;
 using System.Threading.Tasks;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
+using NSec.Cryptography;
 
 namespace EventSourcingDb;
 
 public class Container
 {
-    private string _imageName = "thenativeweb/eventsourcingdb";
+    private const string ImageName = "thenativeweb/eventsourcingdb";
+    private const string SigningKeyFileName = "/signing-key.pem";
     private string _imageTag = "latest";
     private ushort _internalPort = 3000;
     private string _apiToken = "secret";
+    private Key? _key;
     private IContainer? _container;
 
     public Container WithImageTag(string tag)
     {
         _imageTag = tag;
+        return this;
+    }
+
+    public Container WithSigningKey()
+    {
+        _key = Key.Create(
+            SignatureAlgorithm.Ed25519,
+            new KeyCreationParameters { ExportPolicy = KeyExportPolicies.AllowPlaintextExport }
+        );
         return this;
     }
 
@@ -35,17 +47,27 @@ public class Container
 
     public async Task StartAsync(CancellationToken token = default)
     {
+        string[] command = [
+            "run",
+            "--api-token", _apiToken,
+            "--data-directory-temporary",
+            "--http-enabled",
+            "--https-enabled=false"
+        ];
+
         var builder = new ContainerBuilder()
-            .WithImage($"{_imageName}:{_imageTag}")
+            .WithImage($"{ImageName}:{_imageTag}")
             .WithExposedPort(_internalPort)
-            .WithPortBinding(_internalPort, assignRandomHostPort: true)
-            .WithCommand(
-                "run",
-                "--api-token", _apiToken,
-                "--data-directory-temporary",
-                "--http-enabled",
-                "--https-enabled=false"
-            )
+            .WithPortBinding(_internalPort, assignRandomHostPort: true);
+
+        if (_key is not null)
+        {
+            var key = _key.Export(KeyBlobFormat.PkixPrivateKeyText);
+            builder = builder.WithResourceMapping(key, SigningKeyFileName);
+            command = [.. command, $"--signing-key-file={SigningKeyFileName}"];
+        }
+
+        builder = builder.WithCommand(command)
             .WithWaitStrategy(Wait.ForUnixContainer()
                 .UntilHttpRequestIsSucceeded(request =>
                     request.ForPort(_internalPort)
@@ -95,5 +117,15 @@ public class Container
     public IClient GetClient(JsonSerializerOptions? dataSerializerOptions = null)
     {
         return new Client(GetBaseUrl(), GetApiToken(), dataSerializerOptions);
+    }
+
+    public byte[] GetVerificationKey()
+    {
+        if (_key is null)
+        {
+            throw new InvalidOperationException("Signing key is not set.");
+        }
+
+        return _key.Export(KeyBlobFormat.PkixPublicKey);
     }
 }
