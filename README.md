@@ -388,6 +388,18 @@ event.VerifyHash();
 
 *Note that this only verifies the hash. If you also want to verify the signature, you can skip this step and call `VerifySignature` directly, which performs a hash verification internally.*
 
+### Verifying an Event's Signature
+
+To verify the authenticity of an event, call the `VerifySignature` method on the event instance. This requires the public key that matches the private key used for signing on the server.
+
+The function first verifies the event's hash, and then checks the signature. If any verification step fails, it returns an error:
+
+```csharp
+var verificationKey = // an ed25519 public key
+
+event.VerifySignature(verificationKey);
+```
+
 ## Using Testcontainers
 
 Import the `Container` class, create an instance, call the `StartAsync` method to run a test container, get a client, run your test code, and finally call the `StopAsync` method to stop the test container:
