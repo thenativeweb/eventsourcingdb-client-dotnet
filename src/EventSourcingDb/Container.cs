@@ -64,7 +64,7 @@ public class Container
         {
             var key = _key.Export(KeyBlobFormat.PkixPrivateKeyText);
             builder = builder.WithResourceMapping(key, SigningKeyFileName);
-            command = [..command, $"--signing-key-file={SigningKeyFileName}"];
+            command = [.. command, $"--signing-key-file={SigningKeyFileName}"];
         }
 
         builder = builder.WithCommand(command)
