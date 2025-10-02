@@ -36,6 +36,14 @@ public interface IClient
     );
 
     /// <summary>
+    /// Reads subjects recursively, starting from a base subject.
+    /// </summary>
+    IAsyncEnumerable<string> ReadSubjectsAsync(
+        string baseSubject,
+        CancellationToken token = default
+    );
+
+    /// <summary>
     /// Observes events for a given subject. The enumeration continues as new events are written to the store.
     /// </summary>
     IAsyncEnumerable<Event> ObserveEventsAsync(
