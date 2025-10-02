@@ -45,11 +45,41 @@ await client.VerifyApiTokenAsync();
 
 Optionally, you might provide a `CancellationToken`.
 
-## Serializing and Deserializing
+### Serializing and Deserializing
 
 Basically, `System.Text.Json` is used for JSON serialization and deserialization.
 
-You can override the default settings by either using JSON attributes on your types and properties or by providing your own `JsonSerializerOptions` when creating the `Client` both manually or via [dependency injection](#dependency-injection).
+You can override the default settings by either using JSON attributes on your types and properties or by providing your own `JsonSerializerOptions` when creating the `Client` both manually or via dependency injection.
+
+### Dependency Injection
+
+If you use Microsoft's dependency injection framework, you can call the `AddEventSourcingDb` extension method to register the `Client` as a scoped service:
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+builder.services.AddEventSourcingDb(builder.Configuration);
+```
+
+The client is configured according to your `IConfiguration` state, e.g. by setting environment variables or using the `EventSourcingDb` section in `appsettings.json`:
+
+```json
+{
+  "EventSourcingDb": {
+    "BaseUrl": "http://localhost:3000",
+    "ApiToken": "secret"
+  }
+}
+```
+
+To configure the client at runtime, provide a configuration action:
+
+```csharp
+builder.Services.AddEventSourcingDb(builder.Configuration, options =>
+{
+    options.BaseUrl = new Uri("http://localhost:3000");
+    options.ApiToken = "secret";
+});
+```
 
 ## Writing Events
 
@@ -348,36 +378,27 @@ To list a specific event type, call the `ReadEventTypeAsync` method with the eve
 var eventType = await client.ReadEventTypeAsync("io.eventsourcingdb.library.book-acquired");
 ```
 
-## Dependency Injection
+### Verifying an Event's Hash
 
-If you use Microsoft's dependency injection framework, you can just call the `AddEventSourcingDb` extension method to register the `Client` as a scoped service:
-
-```csharp
-var builder = WebApplication.CreateBuilder(args);
-builder.serices.AddEventSourcingDb(builder.Configuration);
-```
-
-The client is configured according to your `IConfiguration` state, e.g. by setting environment variables or with the `EventSourcingDb` section in `appsettings.json`:
-
-```json
-{
-  "EventSourcingDb": {
-    "BaseUrl": "http://localhost:3000",
-    "ApiToken": "secret"
-  }
-}
-```
-
-If you need to configure the client at runtime, you can provide a configuration action:
+To verify the integrity of an event, call the `VerifyHash` method on the event instance. This recomputes the event's hash locally and compares it to the hash stored in the event. If the hashes differ, the function returns an error:
 
 ```csharp
-builder.Services.AddEventSourcingDb(builder.Configuration, options =>
-{
-    options.BaseUrl = new Uri("http://localhost:3001");
-    options.ApiToken = "anotherSecret";
-});
+event.VerifyHash();
 ```
 
+*Note that this only verifies the hash. If you also want to verify the signature, you can skip this step and call `VerifySignature` directly, which performs a hash verification internally.*
+
+### Verifying an Event's Signature
+
+To verify the authenticity of an event, call the `VerifySignature` method on the event instance. This requires the public key that matches the private key used for signing on the server.
+
+The function first verifies the event's hash, and then checks the signature. If any verification step fails, it returns an error:
+
+```csharp
+var verificationKey = // an ed25519 public key
+
+event.VerifySignature(verificationKey);
+```
 
 ## Using Testcontainers
 
