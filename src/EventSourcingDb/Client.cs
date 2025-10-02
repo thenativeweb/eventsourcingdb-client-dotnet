@@ -239,7 +239,7 @@ public class Client : IClient
 
         while (eventResponse != null)
         {
-            var line = JsonSerializer.Deserialize<ReadEventLine>(eventResponse, _defaultSerializerOptions);
+            var line = JsonSerializer.Deserialize<Line>(eventResponse, _defaultSerializerOptions);
             if (line?.Type is null)
             {
                 throw new InvalidValueException($"Failed to get the expected response, got null line from '{eventResponse}'.");
@@ -272,6 +272,74 @@ public class Client : IClient
             }
 
             eventResponse = await reader
+                .ReadLineAsync(token)
+                .ConfigureAwait(false);
+        }
+    }
+
+    public async IAsyncEnumerable<string> ReadSubjectsAsync(
+        string baseSubject,
+        [EnumeratorCancellation] CancellationToken token = default)
+    {
+        var readSubjectsUrl = new Uri(_baseUrl, "/api/v1/read-subjects");
+
+        _logger.LogTrace("Trying to read subjects using url '{Url}'...", readSubjectsUrl);
+
+        var requestBody = new { baseSubject };
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, readSubjectsUrl);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiToken);
+        request.Content = new StringContent(
+            JsonSerializer.Serialize(requestBody, _defaultSerializerOptions),
+            Encoding.UTF8,
+            "application/json"
+        );
+
+        using var response = await _httpClient
+            .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token)
+            .ConfigureAwait(false);
+
+        if (response.StatusCode != HttpStatusCode.OK)
+        {
+            throw new HttpRequestException(
+                message: "Unexpected status code.", inner: null, statusCode: response.StatusCode
+            );
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
+        using var reader = new StreamReader(stream);
+
+        var subjectResponse = await reader
+            .ReadLineAsync(token)
+            .ConfigureAwait(false);
+
+        while (subjectResponse != null)
+        {
+            var line = JsonSerializer.Deserialize<Line>(subjectResponse, _defaultSerializerOptions);
+            if (line?.Type is null)
+            {
+                throw new InvalidValueException($"Failed to get the expected response, got null line from '{subjectResponse}'.");
+            }
+
+            switch (line.Type)
+            {
+                case "subject":
+                    var subject = line.Payload.Deserialize<Subject>(_defaultSerializerOptions);
+                    if (subject == null)
+                        throw new InvalidValueException("Failed to deserialize stream subject.");
+                    yield return subject.Name;
+                    break;
+                case "error":
+                    if (line.Payload.ValueKind != JsonValueKind.String)
+                    {
+                        throw new InvalidValueException($"Received line of type 'error', but payload is not a string: '{line.Payload}'.");
+                    }
+                    throw new Exception(line.Payload.GetString() ?? "unknown error");
+                default:
+                    throw new Exception($"Failed to handle unsupported line type '{line.Type}'.");
+            }
+
+            subjectResponse = await reader
                 .ReadLineAsync(token)
                 .ConfigureAwait(false);
         }
@@ -315,7 +383,7 @@ public class Client : IClient
 
         while (eventResponse != null)
         {
-            var line = JsonSerializer.Deserialize<ReadEventLine>(eventResponse, _defaultSerializerOptions);
+            var line = JsonSerializer.Deserialize<Line>(eventResponse, _defaultSerializerOptions);
             if (line?.Type is null)
             {
                 throw new InvalidValueException($"Failed to get the expected response, got null line from '{eventResponse}'.");
@@ -384,7 +452,7 @@ public class Client : IClient
 
         while (eventTypesResponse != null)
         {
-            var line = JsonSerializer.Deserialize<ReadEventLine>(eventTypesResponse, _defaultSerializerOptions);
+            var line = JsonSerializer.Deserialize<Line>(eventTypesResponse, _defaultSerializerOptions);
             if (line?.Type is null)
             {
                 throw new InvalidValueException($"Failed to get the expected response, got null line from '{eventTypesResponse}'.");
@@ -495,7 +563,7 @@ public class Client : IClient
 
         while (queryResponse != null)
         {
-            var line = JsonSerializer.Deserialize<ReadEventLine>(queryResponse, _defaultSerializerOptions);
+            var line = JsonSerializer.Deserialize<Line>(queryResponse, _defaultSerializerOptions);
             if (line?.Type is null)
             {
                 throw new InvalidValueException($"Failed to get the expected response, got null line from '{queryResponse}'.");
