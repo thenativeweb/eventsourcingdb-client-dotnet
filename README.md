@@ -164,7 +164,7 @@ If an error occurs, the stream will terminate with an exception.
 
 *Optionally, you might provide a `CancellationToken`.*
 
-#### Deserializing Event Data
+### Deserializing Event Data
 
 Each event contains a `Data` property, which holds the event payload as JSON. To deserialize this payload into a strongly typed object, call `GetData<T>()`:
 
@@ -288,7 +288,7 @@ If an error occurs, the stream will terminate with an exception.
 
 *Optionally, you might provide a `CancellationToken`.*
 
-#### Deserializing Event Data
+### Deserializing Event Data
 
 Each event contains a `Data` property, which holds the event payload as JSON. To deserialize this payload into a strongly typed object, call `GetData<T>()`:
 
@@ -378,7 +378,29 @@ To list a specific event type, call the `ReadEventTypeAsync` method with the eve
 var eventType = await client.ReadEventTypeAsync("io.eventsourcingdb.library.book-acquired");
 ```
 
-### Verifying an Event's Hash
+## Listing Subjects
+
+To list all subjects, call the `ReadSubjectsAsync` method with `/` as the base subject. The method returns an async stream:
+
+```csharp
+await foreach (var eventType in client.ReadSubjectsAsync("/"))
+{
+    // ...
+}
+```
+
+If you only want to list subjects within a specific branch, provide the desired base subject instead:
+
+```csharp
+await foreach (var eventType in client.ReadSubjectsAsync("/books"))
+{
+    // ...
+}
+```
+
+*Optionally, you might provide a `CancellationToken`.*
+
+## Verifying an Event's Hash
 
 To verify the integrity of an event, call the `VerifyHash` method on the event instance. This recomputes the event's hash locally and compares it to the hash stored in the event. If the hashes differ, the function returns an error:
 
@@ -388,7 +410,7 @@ event.VerifyHash();
 
 *Note that this only verifies the hash. If you also want to verify the signature, you can skip this step and call `VerifySignature` directly, which performs a hash verification internally.*
 
-### Verifying an Event's Signature
+## Verifying an Event's Signature
 
 To verify the authenticity of an event, call the `VerifySignature` method on the event instance. This requires the public key that matches the private key used for signing on the server.
 
@@ -425,7 +447,7 @@ To check if the test container is running, call the `IsRunning` method:
 var isRunning = container.IsRunning();
 ```
 
-#### Configuring the Container Instance
+### Configuring the Container Instance
 
 By default, `Container` uses the `latest` tag of the official EventSourcingDB Docker image. To change that, call the `WithImageTag` method:
 
@@ -442,7 +464,7 @@ var container = new Container()
     .WithApiToken("secret");
 ```
 
-#### Configuring the Client Manually
+### Configuring the Client Manually
 
 In case you need to set up the client yourself, use the following methods to get details on the container:
 
