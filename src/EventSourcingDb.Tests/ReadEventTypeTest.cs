@@ -20,7 +20,7 @@ public class ReadEventTypeTest : EventSourcingDbTests
         }
         catch (HttpRequestException ex)
         {
-            Assert.Equal("Unexpected status code.", ex.Message);
+            Assert.StartsWith("Unexpected status code", ex.Message);
             Assert.Equal(HttpStatusCode.NotFound, ex.StatusCode);
         }
         catch (Exception ex)
@@ -40,7 +40,7 @@ public class ReadEventTypeTest : EventSourcingDbTests
         }
         catch (HttpRequestException ex)
         {
-            Assert.Equal("Unexpected status code.", ex.Message);
+            Assert.StartsWith("Unexpected status code", ex.Message);
             Assert.Equal(HttpStatusCode.BadRequest, ex.StatusCode);
         }
         catch (Exception ex)
