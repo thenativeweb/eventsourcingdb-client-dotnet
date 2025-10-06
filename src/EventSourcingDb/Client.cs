@@ -6,6 +6,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Net.Mime;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -41,7 +42,6 @@ public class Client : IClient
         }
     );
     private readonly Uri _baseUrl;
-    private readonly string _apiToken;
     private readonly ILogger<Client> _logger;
 
     public Client(Uri baseUrl, string apiToken) : this(baseUrl, apiToken, null)
@@ -55,9 +55,9 @@ public class Client : IClient
     public Client(Uri baseUrl, string apiToken, JsonSerializerOptions? dataSerializerOptions = null, ILogger<Client>? logger = null)
     {
         _baseUrl = baseUrl;
-        _apiToken = apiToken;
+        _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
 
-        if (dataSerializerOptions != null)
+        if (dataSerializerOptions is not null)
         {
             _dataSerializerOptions = dataSerializerOptions;
         }
@@ -76,26 +76,13 @@ public class Client : IClient
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, pingUrl);
             using var response = await _httpClient.SendAsync(request, token).ConfigureAwait(false);
-            if (response.StatusCode != HttpStatusCode.OK)
-            {
-                throw new HttpRequestException(
-                    message: "Unexpected status code.", inner: null, statusCode: response.StatusCode
-                );
-            }
+            await response.ThrowIfNotSuccessStatusCode(token);
 
             var pingResponse = await response.Content
-                .ReadFromJsonAsync<VerifyApiTokenResponse>(_defaultSerializerOptions, token)
+                .ReadFromJsonAsync<Response>(_defaultSerializerOptions, token)
                 .ConfigureAwait(false);
 
-            if (string.IsNullOrEmpty(pingResponse.Type))
-            {
-                throw new InvalidValueException($"Failed to get the expected response, got empty string, expected '{expectedEventType}'.");
-            }
-
-            if (pingResponse.Type != expectedEventType)
-            {
-                throw new InvalidValueException($"Failed to get the expected response, got '{pingResponse.Type}' expected '{expectedEventType}'.");
-            }
+            pingResponse.ThrowNotExpectedType(expectedEventType);
 
             _logger.LogTrace("Pinged '{Url}' successfully.", pingUrl);
         }
@@ -116,29 +103,15 @@ public class Client : IClient
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, verifyUrl);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiToken);
 
             using var response = await _httpClient.SendAsync(request, token).ConfigureAwait(false);
-            if (response.StatusCode != HttpStatusCode.OK)
-            {
-                throw new HttpRequestException(
-                    message: "Unexpected status code.", inner: null, statusCode: response.StatusCode
-                );
-            }
+            await response.ThrowIfNotSuccessStatusCode(token);
 
             var verifyResponse = await response.Content
-                .ReadFromJsonAsync<VerifyApiTokenResponse>(_defaultSerializerOptions, token)
+                .ReadFromJsonAsync<Response>(_defaultSerializerOptions, token)
                 .ConfigureAwait(false);
 
-            if (string.IsNullOrEmpty(verifyResponse.Type))
-            {
-                throw new InvalidValueException($"Failed to get the expected response, got empty string, expected '{expectedEventType}'.");
-            }
-
-            if (verifyResponse.Type != expectedEventType)
-            {
-                throw new InvalidValueException($"Failed to get the expected response, got '{verifyResponse.Type}' expected '{expectedEventType}'.");
-            }
+            verifyResponse.ThrowNotExpectedType(expectedEventType);
 
             _logger.LogTrace("Verified API token using url '{Url}' successfully.", verifyUrl);
         }
@@ -166,29 +139,27 @@ public class Client : IClient
                 .ToArray();
 
             using var request = new HttpRequestMessage(HttpMethod.Post, writeEventsUrl);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiToken);
             request.Content = new StringContent(
                 JsonSerializer.Serialize(new { events = candidatesWithSerializedData, preconditions }, _defaultSerializerOptions),
                 Encoding.UTF8,
-                "application/json"
+                MediaTypeNames.Application.Json
             );
 
             using var response = await _httpClient.SendAsync(request, token).ConfigureAwait(false);
-            if (response.StatusCode != HttpStatusCode.OK)
-            {
-                var errorResponse = await response.Content.ReadAsStringAsync(token).ConfigureAwait(false);
-                throw new HttpRequestException(
-                    message: $"Unexpected status code ('{errorResponse}').", inner: null, statusCode: response.StatusCode
-                );
-            }
+            await response.ThrowIfNotSuccessStatusCode(token);
 
             var eventsResponse = await response.Content
                 .ReadFromJsonAsync<CloudEvent[]>(_defaultSerializerOptions, token)
                 .ConfigureAwait(false);
 
-            if (eventsResponse is null) throw new InvalidValueException("Failed to parse response.");
+            if (eventsResponse is null)
+            {
+                throw new InvalidValueException("Failed to parse response.");
+            }
 
-            var result = eventsResponse.Select(cloudEvent => new Event(cloudEvent, _dataSerializerOptions)).ToArray();
+            var result = eventsResponse
+                .Select(cloudEvent => new Event(cloudEvent, _dataSerializerOptions))
+                .ToArray();
 
             _logger.LogTrace("Written '{Count}' events using url '{Url}' successfully.", result.Length, writeEventsUrl);
 
@@ -213,45 +184,34 @@ public class Client : IClient
         var requestOptions = new ReadEventsRequestOptions(options);
 
         using var request = new HttpRequestMessage(HttpMethod.Post, readEventsUrl);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiToken);
         request.Content = new StringContent(
             JsonSerializer.Serialize(new { subject, Options = requestOptions }, _defaultSerializerOptions),
             Encoding.UTF8,
-            "application/json"
+            MediaTypeNames.Application.Json
         );
 
         using var response = await _httpClient
             .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token)
             .ConfigureAwait(false);
-        if (response.StatusCode != HttpStatusCode.OK)
-        {
-            throw new HttpRequestException(
-                message: "Unexpected status code.", inner: null, statusCode: response.StatusCode
-            );
-        }
+        await response.ThrowIfNotSuccessStatusCode(token);
 
         await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
         using var reader = new StreamReader(stream);
 
-        var eventResponse = await reader
+        var eventLine = await reader
             .ReadLineAsync(token)
             .ConfigureAwait(false);
 
-        while (eventResponse != null)
+        while (eventLine is not null)
         {
-            var line = JsonSerializer.Deserialize<Line>(eventResponse, _defaultSerializerOptions);
-            if (line?.Type is null)
-            {
-                throw new InvalidValueException($"Failed to get the expected response, got null line from '{eventResponse}'.");
-            }
+            var line = JsonSerializer
+                .Deserialize<Line>(eventLine, _defaultSerializerOptions)
+                .ThrowIfNull(eventLine);
 
             switch (line.Type)
             {
                 case "event":
-                    if (line.Payload.ValueKind != JsonValueKind.Object)
-                    {
-                        throw new InvalidValueException($"Received line of type 'event', but payload is not an object: '{line.Payload}'.");
-                    }
+                    line.ThrowIfNotExpectedPayload("event");
                     var cloudEvent = line.Payload.Deserialize<CloudEvent>(_defaultSerializerOptions);
                     if (cloudEvent is null)
                     {
@@ -262,16 +222,13 @@ public class Client : IClient
 
                     break;
                 case "error":
-                    if (line.Payload.ValueKind != JsonValueKind.String)
-                    {
-                        throw new InvalidValueException($"Received line of type 'error', but payload is not a string: '{line.Payload}'.");
-                    }
+                    line.ThrowIfNotExpectedError();
                     throw new Exception(line.Payload.GetString() ?? "unknown error");
                 default:
                     throw new Exception($"Failed to handle unsupported line type '{line.Type}'.");
             }
 
-            eventResponse = await reader
+            eventLine = await reader
                 .ReadLineAsync(token)
                 .ConfigureAwait(false);
         }
@@ -288,58 +245,49 @@ public class Client : IClient
         var requestBody = new { baseSubject };
 
         using var request = new HttpRequestMessage(HttpMethod.Post, readSubjectsUrl);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiToken);
         request.Content = new StringContent(
             JsonSerializer.Serialize(requestBody, _defaultSerializerOptions),
             Encoding.UTF8,
-            "application/json"
+            MediaTypeNames.Application.Json
         );
 
         using var response = await _httpClient
             .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token)
             .ConfigureAwait(false);
-
-        if (response.StatusCode != HttpStatusCode.OK)
-        {
-            throw new HttpRequestException(
-                message: "Unexpected status code.", inner: null, statusCode: response.StatusCode
-            );
-        }
+        await response.ThrowIfNotSuccessStatusCode(token);
 
         await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
         using var reader = new StreamReader(stream);
 
-        var subjectResponse = await reader
+        var subjectLine = await reader
             .ReadLineAsync(token)
             .ConfigureAwait(false);
 
-        while (subjectResponse != null)
+        while (subjectLine is not null)
         {
-            var line = JsonSerializer.Deserialize<Line>(subjectResponse, _defaultSerializerOptions);
-            if (line?.Type is null)
-            {
-                throw new InvalidValueException($"Failed to get the expected response, got null line from '{subjectResponse}'.");
-            }
+            var line = JsonSerializer
+                .Deserialize<Line>(subjectLine, _defaultSerializerOptions)
+                .ThrowIfNull(subjectLine);
 
             switch (line.Type)
             {
                 case "subject":
+                    line.ThrowIfNotExpectedPayload("subject");
                     var subject = line.Payload.Deserialize<Subject>(_defaultSerializerOptions);
-                    if (subject == null)
+                    if (subject is null)
+                    {
                         throw new InvalidValueException("Failed to deserialize stream subject.");
+                    }
                     yield return subject.Name;
                     break;
                 case "error":
-                    if (line.Payload.ValueKind != JsonValueKind.String)
-                    {
-                        throw new InvalidValueException($"Received line of type 'error', but payload is not a string: '{line.Payload}'.");
-                    }
+                    line.ThrowIfNotExpectedError();
                     throw new Exception(line.Payload.GetString() ?? "unknown error");
                 default:
                     throw new Exception($"Failed to handle unsupported line type '{line.Type}'.");
             }
 
-            subjectResponse = await reader
+            subjectLine = await reader
                 .ReadLineAsync(token)
                 .ConfigureAwait(false);
         }
@@ -357,45 +305,34 @@ public class Client : IClient
         var requestOptions = new ObserveEventsRequestOptions(options);
 
         using var request = new HttpRequestMessage(HttpMethod.Post, observeEventsUrl);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiToken);
         request.Content = new StringContent(
             JsonSerializer.Serialize(new { subject, Options = requestOptions }, _defaultSerializerOptions),
             Encoding.UTF8,
-            "application/json"
+            MediaTypeNames.Application.Json
         );
 
         using var response = await _httpClient
             .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token)
             .ConfigureAwait(false);
-        if (response.StatusCode != HttpStatusCode.OK)
-        {
-            throw new HttpRequestException(
-                message: "Unexpected status code.", inner: null, statusCode: response.StatusCode
-            );
-        }
+        await response.ThrowIfNotSuccessStatusCode(token);
 
         await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
         using var reader = new StreamReader(stream);
 
-        var eventResponse = await reader
+        var eventLine = await reader
             .ReadLineAsync(token)
             .ConfigureAwait(false);
 
-        while (eventResponse != null)
+        while (eventLine is not null)
         {
-            var line = JsonSerializer.Deserialize<Line>(eventResponse, _defaultSerializerOptions);
-            if (line?.Type is null)
-            {
-                throw new InvalidValueException($"Failed to get the expected response, got null line from '{eventResponse}'.");
-            }
+            var line = JsonSerializer
+                .Deserialize<Line>(eventLine, _defaultSerializerOptions)
+                .ThrowIfNull(eventLine);
 
             switch (line.Type)
             {
                 case "event":
-                    if (line.Payload.ValueKind != JsonValueKind.Object)
-                    {
-                        throw new InvalidValueException($"Received line of type 'event', but payload is not an object: '{line.Payload}'.");
-                    }
+                    line.ThrowIfNotExpectedPayload("event");
                     var cloudEvent = line.Payload.Deserialize<CloudEvent>(_defaultSerializerOptions);
                     if (cloudEvent is null)
                     {
@@ -406,10 +343,7 @@ public class Client : IClient
 
                     break;
                 case "error":
-                    if (line.Payload.ValueKind != JsonValueKind.String)
-                    {
-                        throw new InvalidValueException($"Received line of type 'error', but payload is not a string: '{line.Payload}'.");
-                    }
+                    line.ThrowIfNotExpectedError();
                     throw new Exception(line.Payload.GetString() ?? "unknown error");
                 case "heartbeat":
                     continue;
@@ -417,7 +351,7 @@ public class Client : IClient
                     throw new Exception($"Failed to handle unsupported line type '{line.Type}'.");
             }
 
-            eventResponse = await reader
+            eventLine = await reader
                 .ReadLineAsync(token)
                 .ConfigureAwait(false);
         }
@@ -431,40 +365,29 @@ public class Client : IClient
         _logger.LogTrace("Trying to read event types using url '{Url}'...", readEvenTypesUrl);
 
         using var request = new HttpRequestMessage(HttpMethod.Post, readEvenTypesUrl);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiToken);
 
         using var response = await _httpClient
             .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token)
             .ConfigureAwait(false);
-        if (response.StatusCode != HttpStatusCode.OK)
-        {
-            throw new HttpRequestException(
-                message: "Unexpected status code.", inner: null, statusCode: response.StatusCode
-            );
-        }
+        await response.ThrowIfNotSuccessStatusCode(token);
 
         await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
         using var reader = new StreamReader(stream);
 
-        var eventTypesResponse = await reader
+        var eventTypesLine = await reader
             .ReadLineAsync(token)
             .ConfigureAwait(false);
 
-        while (eventTypesResponse != null)
+        while (eventTypesLine is not null)
         {
-            var line = JsonSerializer.Deserialize<Line>(eventTypesResponse, _defaultSerializerOptions);
-            if (line?.Type is null)
-            {
-                throw new InvalidValueException($"Failed to get the expected response, got null line from '{eventTypesResponse}'.");
-            }
+            var line = JsonSerializer
+                .Deserialize<Line>(eventTypesLine, _defaultSerializerOptions)
+                .ThrowIfNull(eventTypesLine);
 
             switch (line.Type)
             {
                 case "eventType":
-                    if (line.Payload.ValueKind != JsonValueKind.Object)
-                    {
-                        throw new InvalidValueException($"Received line of type 'eventType', but payload is not an object: '{line.Payload}'.");
-                    }
+                    line.ThrowIfNotExpectedPayload("eventType");
                     var eventType = line.Payload.Deserialize<EventType>(_defaultSerializerOptions);
                     if (eventType is null)
                     {
@@ -475,10 +398,7 @@ public class Client : IClient
 
                     break;
                 case "error":
-                    if (line.Payload.ValueKind != JsonValueKind.String)
-                    {
-                        throw new InvalidValueException($"Received line of type 'error', but payload is not a string: '{line.Payload}'.");
-                    }
+                    line.ThrowIfNotExpectedError();
                     throw new Exception(line.Payload.GetString() ?? "unknown error");
                 case "heartbeat":
                     continue;
@@ -486,7 +406,7 @@ public class Client : IClient
                     throw new Exception($"Failed to handle unsupported line type '{line.Type}'.");
             }
 
-            eventTypesResponse = await reader
+            eventTypesLine = await reader
                 .ReadLineAsync(token)
                 .ConfigureAwait(false);
         }
@@ -501,20 +421,14 @@ public class Client : IClient
         _logger.LogTrace("Trying to read event type using url '{Url}'...", readEventTypeUrl);
 
         using var request = new HttpRequestMessage(HttpMethod.Post, readEventTypeUrl);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiToken);
         request.Content = new StringContent(
             JsonSerializer.Serialize(new { eventType }, _defaultSerializerOptions),
             Encoding.UTF8,
-            "application/json"
+            MediaTypeNames.Application.Json
         );
 
         using var response = await _httpClient.SendAsync(request, token).ConfigureAwait(false);
-        if (response.StatusCode != HttpStatusCode.OK)
-        {
-            throw new HttpRequestException(
-                message: "Unexpected status code.", inner: null, statusCode: response.StatusCode
-            );
-        }
+        await response.ThrowIfNotSuccessStatusCode(token);
 
         var eventTypeResponse = await response.Content
             .ReadFromJsonAsync<EventType>(_defaultSerializerOptions, token)
@@ -537,37 +451,29 @@ public class Client : IClient
         _logger.LogTrace("Trying to run EventQL query using url '{Url}'...", runEventQlQueryUrl);
 
         using var request = new HttpRequestMessage(HttpMethod.Post, runEventQlQueryUrl);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiToken);
         request.Content = new StringContent(
             JsonSerializer.Serialize(new RequestBody(query), _defaultSerializerOptions),
             Encoding.UTF8,
-            "application/json"
+            MediaTypeNames.Application.Json
         );
 
         using var response = await _httpClient
             .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token)
             .ConfigureAwait(false);
-        if (response.StatusCode != HttpStatusCode.OK)
-        {
-            throw new HttpRequestException(
-                message: "Unexpected status code.", inner: null, statusCode: response.StatusCode
-            );
-        }
+        await response.ThrowIfNotSuccessStatusCode(token);
 
         await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
         using var reader = new StreamReader(stream);
 
-        var queryResponse = await reader
+        var queryLine = await reader
             .ReadLineAsync(token)
             .ConfigureAwait(false);
 
-        while (queryResponse != null)
+        while (queryLine is not null)
         {
-            var line = JsonSerializer.Deserialize<Line>(queryResponse, _defaultSerializerOptions);
-            if (line?.Type is null)
-            {
-                throw new InvalidValueException($"Failed to get the expected response, got null line from '{queryResponse}'.");
-            }
+            var line = JsonSerializer
+                .Deserialize<Line>(queryLine, _defaultSerializerOptions)
+                .ThrowIfNull(queryLine);
 
             switch (line.Type)
             {
@@ -575,10 +481,7 @@ public class Client : IClient
                     yield return DeserializeRow<TRow>(line.Payload);
                     break;
                 case "error":
-                    if (line.Payload.ValueKind != JsonValueKind.String)
-                    {
-                        throw new InvalidValueException($"Received line of type 'error', but payload is not a string: '{line.Payload}'.");
-                    }
+                    line.ThrowIfNotExpectedError();
                     throw new Exception(line.Payload.GetString() ?? "unknown error");
                 case "heartbeat":
                     continue;
@@ -586,7 +489,7 @@ public class Client : IClient
                     throw new Exception($"Failed to handle unsupported line type '{line.Type}'.");
             }
 
-            queryResponse = await reader
+            queryLine = await reader
                 .ReadLineAsync(token)
                 .ConfigureAwait(false);
         }
