@@ -68,6 +68,16 @@ public interface IClient
     );
 
     /// <summary>
+    /// Registers a new event schema for a given event type.
+    /// If a schema for the event type already exists, an error is returned.
+    /// </summary>
+    Task RegisterEventSchemaAsync(
+        string eventType,
+        Dictionary<string, object> schema,
+        CancellationToken token = default
+    );
+
+    /// <summary>
     /// Runs an EventQL query and returns rows according to the projection from the query.
     /// </summary>
     IAsyncEnumerable<TRow?> RunEventQlQueryAsync<TRow>(

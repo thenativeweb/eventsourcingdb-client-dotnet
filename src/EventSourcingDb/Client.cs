@@ -416,7 +416,7 @@ public class Client : IClient
         string eventType,
         CancellationToken token = default)
     {
-        var readEventTypeUrl = new Uri(_baseUrl, $"/api/v1/read-event-type");
+        var readEventTypeUrl = new Uri(_baseUrl, "/api/v1/read-event-type");
 
         _logger.LogTrace("Trying to read event type using url '{Url}'...", readEventTypeUrl);
 
@@ -440,6 +440,30 @@ public class Client : IClient
         }
 
         return eventTypeResponse;
+    }
+
+    public async Task RegisterEventSchemaAsync(
+        string eventType,
+        Dictionary<string, object> schema,
+        CancellationToken token = default)
+    {
+        var registerEventSchemaUrl = new Uri(_baseUrl, "/api/v1/register-event-schema");
+
+        var requestBody = new
+        {
+            eventType,
+            schema
+        };
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, registerEventSchemaUrl);
+        request.Content = new StringContent(
+            JsonSerializer.Serialize(requestBody, _defaultSerializerOptions),
+            Encoding.UTF8,
+            MediaTypeNames.Application.Json
+        );
+
+        using var response = await _httpClient.SendAsync(request, token).ConfigureAwait(false);
+        await response.ThrowIfNotSuccessStatusCode(token);
     }
 
     public async IAsyncEnumerable<TRow?> RunEventQlQueryAsync<TRow>(
