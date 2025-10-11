@@ -359,6 +359,30 @@ await foreach (var @event in client.ObserveEventsAsync(
 
 *Note that `FromLatestEvent` and `LowerBound` cannot be used at the same time.*
 
+## Registering an Event Schema
+
+To register an event schema, call the `RegisterEventSchemaAsync` method and hand over an event type and the desired schema:
+
+```csharp
+await client.RegisterEventSchemaAsync(
+    "io.eventsourcingdb.library.book-acquired",
+    new Dictionary<string, object>
+    {
+        ["type"] = "object",
+        ["properties"] = new Dictionary<string, object>
+        {
+            ["title"] = new Dictionary<string, object> { ["type"] = "string" },
+            ["author"] = new Dictionary<string, object> { ["type"] = "string" },
+            ["isbn"] = new Dictionary<string, object> { ["type"] = "string" }
+        },
+        ["required"] = new[] { "title", "author", "isbn" },
+        ["additionalProperties"] = false
+    }
+);
+```
+
+*Optionally, you might provide a `CancellationToken`.*
+
 ## Listing Event Types
 
 To list all event types, call the `ReadEventTypesAsync` method. The method returns an async stream:
