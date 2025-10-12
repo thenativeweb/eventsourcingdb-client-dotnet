@@ -76,6 +76,7 @@ public class Client : IClient
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, pingUrl);
             using var response = await _httpClient.SendAsync(request, token).ConfigureAwait(false);
+            response.ThrowIfNotValidServerHeader();
             await response.ThrowIfNotSuccessStatusCode(token);
 
             var pingResponse = await response.Content
@@ -105,6 +106,7 @@ public class Client : IClient
             using var request = new HttpRequestMessage(HttpMethod.Post, verifyUrl);
 
             using var response = await _httpClient.SendAsync(request, token).ConfigureAwait(false);
+            response.ThrowIfNotValidServerHeader();
             await response.ThrowIfNotSuccessStatusCode(token);
 
             var verifyResponse = await response.Content
@@ -146,6 +148,7 @@ public class Client : IClient
             );
 
             using var response = await _httpClient.SendAsync(request, token).ConfigureAwait(false);
+            response.ThrowIfNotValidServerHeader();
             await response.ThrowIfNotSuccessStatusCode(token);
 
             var eventsResponse = await response.Content
@@ -193,6 +196,7 @@ public class Client : IClient
         using var response = await _httpClient
             .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token)
             .ConfigureAwait(false);
+        response.ThrowIfNotValidServerHeader();
         await response.ThrowIfNotSuccessStatusCode(token);
 
         await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
@@ -254,6 +258,7 @@ public class Client : IClient
         using var response = await _httpClient
             .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token)
             .ConfigureAwait(false);
+        response.ThrowIfNotValidServerHeader();
         await response.ThrowIfNotSuccessStatusCode(token);
 
         await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
@@ -314,6 +319,7 @@ public class Client : IClient
         using var response = await _httpClient
             .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token)
             .ConfigureAwait(false);
+        response.ThrowIfNotValidServerHeader();
         await response.ThrowIfNotSuccessStatusCode(token);
 
         await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
@@ -369,6 +375,7 @@ public class Client : IClient
         using var response = await _httpClient
             .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token)
             .ConfigureAwait(false);
+        response.ThrowIfNotValidServerHeader();
         await response.ThrowIfNotSuccessStatusCode(token);
 
         await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
@@ -484,6 +491,7 @@ public class Client : IClient
         using var response = await _httpClient
             .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token)
             .ConfigureAwait(false);
+        response.ThrowIfNotValidServerHeader();
         await response.ThrowIfNotSuccessStatusCode(token);
 
         await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
