@@ -10,7 +10,7 @@
 
   <ItemGroup>
     <PackageReference Include="NSec.Cryptography" Version="25.4.0" />
-    <PackageReference Include="Testcontainers" Version="4.7.0" />
+    <PackageReference Include="Testcontainers" Version="4.8.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.9"/>
     <PackageReference Include="Microsoft.Extensions.Options" Version="9.0.9"/>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.9"/>
