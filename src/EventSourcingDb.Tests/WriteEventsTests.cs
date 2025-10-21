@@ -100,6 +100,47 @@ public class WriteEventsTests : EventSourcingDbTests
     }
 
     [Fact]
+    public async Task SupportsTheIsSubjectPopulatedPrecondition()
+    {
+        var client = Container!.GetClient();
+
+        var firstData = new EventData(23);
+        var secondData = new EventData(42);
+
+        var firstEvent = new EventCandidate(
+            Source: "https://www.eventsourcingdb.io",
+            Subject: "/test",
+            Type: "io.eventsourcingdb.test",
+            Data: firstData
+        );
+        var secondEvent = new EventCandidate(
+            Source: "https://www.eventsourcingdb.io",
+            Subject: "/test",
+            Type: "io.eventsourcingdb.test",
+            Data: secondData
+        );
+
+        var error = await Assert.ThrowsAsync<HttpRequestException>(async () =>
+            await client.WriteEventsAsync(
+                [secondEvent],
+                [Precondition.IsSubjectPopulatedPrecondition("/test")]
+            )
+        );
+
+        Assert.Equal(HttpStatusCode.Conflict, error.StatusCode);
+
+        _ = await client.WriteEventsAsync([firstEvent]);
+
+        var writtenEvents = await client.WriteEventsAsync(
+            [secondEvent],
+            [Precondition.IsSubjectPopulatedPrecondition("/test")]
+        );
+
+        Assert.Single(writtenEvents);
+        Assert.Equal("1", writtenEvents.Single().Id);
+    }
+
+    [Fact]
     public async Task SupportsTheIsSubjectOnEventIdPrecondition()
     {
         var client = Container!.GetClient();

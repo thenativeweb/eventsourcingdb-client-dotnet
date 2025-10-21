@@ -119,6 +119,17 @@ var writtenEvents = await client.WriteEventsAsync(
 );
 ```
 
+### Using the `IsSubjectPopulated` precondition
+
+If you only want to write events in case a subject (such as `/books/42`) already has at least one event, use the `IsSubjectPopulatedPrecondition`:
+
+```csharp
+var writtenEvents = await client.WriteEventsAsync(
+    new[] { @event },
+    new[] { Precondition.IsSubjectPopulatedPrecondition("/books/42") }
+);
+```
+
 ### Using the `IsSubjectOnEventId` precondition
 
 If you only want to write events in case the last event of a subject (such as `/books/42`) has a specific ID (e.g., `"0"`), use the `IsSubjectOnEventIdPrecondition`:
