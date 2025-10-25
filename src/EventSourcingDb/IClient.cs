@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using EventSourcingDb.Types;
@@ -73,7 +74,7 @@ public interface IClient
     /// </summary>
     Task RegisterEventSchemaAsync(
         string eventType,
-        Dictionary<string, object> schema,
+        JsonElement schema,
         CancellationToken token = default
     );
 
