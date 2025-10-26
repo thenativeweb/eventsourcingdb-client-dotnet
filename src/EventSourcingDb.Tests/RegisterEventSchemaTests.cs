@@ -10,10 +10,6 @@ public class RegisterEventSchemaTests : EventSourcingDbTests
     private const string SchemaJson =
         """
         {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "$id": "https://eventsourcingdb.io/schemas/test.json",
-            "title": "TestEvent",
-            "description": "Description for TestEvent",
             "type": "object",
             "properties": {
                 "value": {
@@ -22,7 +18,8 @@ public class RegisterEventSchemaTests : EventSourcingDbTests
             },
             "required": [
                 "value"
-            ]
+            ],
+            "additionalProperties": false
         }
         """;
 
