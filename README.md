@@ -372,23 +372,28 @@ await foreach (var @event in client.ObserveEventsAsync(
 
 ## Registering an Event Schema
 
-To register an event schema, call the `RegisterEventSchemaAsync` method and hand over an event type and the desired schema:
+To register an event schema, call the `RegisterEventSchemaAsync` method and hand over an event type and the desired schema as a `JsonElement`:
 
 ```csharp
+var schemaJson =
+    """
+    {
+        "type": "object",
+        "properties": {
+            "title": { "type": "string" },
+            "author": { "type": "string" },
+            "isbn": { "type": "string" }
+        },
+        "required": [ "title", "author", "isbn" ],
+        "additionalProperties": false
+    }
+    """;
+
+var schema = JsonDocument.Parse(schemaJson).RootElement;
+
 await client.RegisterEventSchemaAsync(
     "io.eventsourcingdb.library.book-acquired",
-    new Dictionary<string, object>
-    {
-        ["type"] = "object",
-        ["properties"] = new Dictionary<string, object>
-        {
-            ["title"] = new Dictionary<string, object> { ["type"] = "string" },
-            ["author"] = new Dictionary<string, object> { ["type"] = "string" },
-            ["isbn"] = new Dictionary<string, object> { ["type"] = "string" }
-        },
-        ["required"] = new[] { "title", "author", "isbn" },
-        ["additionalProperties"] = false
-    }
+    schema
 );
 ```
 
