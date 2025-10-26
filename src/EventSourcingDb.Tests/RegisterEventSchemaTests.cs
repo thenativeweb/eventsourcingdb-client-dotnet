@@ -1,5 +1,5 @@
-using System.Collections.Generic;
 using System.Net.Http;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -7,25 +7,30 @@ namespace EventSourcingDb.Tests;
 
 public class RegisterEventSchemaTests : EventSourcingDbTests
 {
+    private const string SchemaJson =
+        """
+        {
+            "type": "object",
+            "properties": {
+                "value": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "value"
+            ],
+            "additionalProperties": false
+        }
+        """;
+
     [Fact]
     public async Task RegistersAnEventSchema()
     {
         var client = Container!.GetClient();
 
         const string eventType = "io.eventsourcingdb.test";
-        var schema = new Dictionary<string, object>
-        {
-            ["type"] = "object",
-            ["properties"] = new Dictionary<string, object>
-            {
-                ["value"] = new Dictionary<string, object>
-                {
-                    ["type"] = "number"
-                }
-            },
-            ["required"] = new[] { "value" },
-            ["additionalProperties"] = false
-        };
+
+        var schema = JsonDocument.Parse(SchemaJson).RootElement;
 
         var exception = await Record.ExceptionAsync(() => client.RegisterEventSchemaAsync(eventType, schema));
 
@@ -38,19 +43,8 @@ public class RegisterEventSchemaTests : EventSourcingDbTests
         var client = Container!.GetClient();
 
         const string eventType = "io.eventsourcingdb.test";
-        var schema = new Dictionary<string, object>
-        {
-            ["type"] = "object",
-            ["properties"] = new Dictionary<string, object>
-            {
-                ["value"] = new Dictionary<string, object>
-                {
-                    ["type"] = "number"
-                }
-            },
-            ["required"] = new[] { "value" },
-            ["additionalProperties"] = false
-        };
+
+        var schema = JsonDocument.Parse(SchemaJson).RootElement;
 
         await client.RegisterEventSchemaAsync(eventType, schema);
 

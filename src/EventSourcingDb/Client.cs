@@ -451,7 +451,7 @@ public class Client : IClient
 
     public async Task RegisterEventSchemaAsync(
         string eventType,
-        Dictionary<string, object> schema,
+        JsonElement schema,
         CancellationToken token = default)
     {
         var registerEventSchemaUrl = new Uri(_baseUrl, "/api/v1/register-event-schema");
