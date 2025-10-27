@@ -81,6 +81,44 @@ builder.Services.AddEventSourcingDb(builder.Configuration, options =>
 });
 ```
 
+### Using a Custom HttpClient
+
+For advanced scenarios, you can inject a custom `HttpClient` into the `Client` constructor. This is useful when you need to:
+
+- Configure retry policies with libraries like Polly
+- Add custom headers for all requests
+- Set custom timeouts
+- Use custom message handlers for logging or tracing
+- Configure advanced HTTP settings
+
+When using a custom `HttpClient`, ensure you configure:
+
+- **BaseAddress**: Set to your EventSourcingDB server URL
+- **Authorization header**: Set to `Bearer {apiToken}`
+
+For optimal connection pooling, use `SocketsHttpHandler` with a `PooledConnectionLifetime` of 2 minutes:
+
+```csharp
+using System.Net.Http;
+using System.Net.Http.Headers;
+using EventSourcingDb;
+
+var handler = new SocketsHttpHandler
+{
+    PooledConnectionLifetime = TimeSpan.FromMinutes(2)
+};
+
+var httpClient = new HttpClient(handler)
+{
+    BaseAddress = new Uri("http://localhost:3000")
+};
+httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "secret");
+
+var client = new Client(httpClient);
+```
+
+This approach gives you full control over the HTTP client's behavior while maintaining compatibility with all EventSourcingDB client features.
+
 ## Writing Events
 
 Call the `WriteEventsAsync` method and provide a collection of events. You do not have to set all event fields – some are automatically added by the server.
@@ -519,6 +557,27 @@ var verificationKey = container.GetVerificationKey();
 ```
 
 The `signingKey` can be used when configuring the container to sign outgoing events. The `verificationKey` can be passed to `VerifySignature` when verifying events read from the database.
+
+### Using a Custom HttpClient with Testcontainers
+
+If you need to use a custom `HttpClient` with the test container (e.g., for custom timeouts, retry policies, or logging), you can pass it to the `GetClient` method:
+
+```csharp
+var container = new Container();
+await container.StartAsync();
+
+var httpClient = new HttpClient
+{
+    BaseAddress = container.GetBaseUrl(),
+    Timeout = TimeSpan.FromSeconds(30)
+};
+httpClient.DefaultRequestHeaders.Authorization =
+    new AuthenticationHeaderValue("Bearer", container.GetApiToken());
+
+var client = container.GetClient(httpClient);
+```
+
+This gives you full control over the HTTP client configuration in your test scenarios.
 
 ### Configuring the Client Manually
 
