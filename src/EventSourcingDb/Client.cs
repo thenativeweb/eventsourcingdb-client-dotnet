@@ -35,27 +35,25 @@ public class Client : IClient
         WriteIndented = false,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
-    private static readonly HttpClient _httpClient = new HttpClient(
-        new SocketsHttpHandler
-        {
-            PooledConnectionLifetime = TimeSpan.FromMinutes(2)
-        }
-    );
-    private readonly Uri _baseUrl;
+    private readonly HttpClient _httpClient;
     private readonly ILogger<Client> _logger;
 
-    public Client(Uri baseUrl, string apiToken) : this(baseUrl, apiToken, null)
+    public Client(Uri baseUrl, string apiToken) : this(CreateHttpClient(baseUrl, apiToken), null, null)
     {
     }
 
-    public Client(Uri baseUrl, string apiToken, ILogger<Client>? logger = null) : this(baseUrl, apiToken, null, logger)
+    public Client(Uri baseUrl, string apiToken, ILogger<Client>? logger = null) : this(CreateHttpClient(baseUrl, apiToken), null, logger)
     {
     }
 
     public Client(Uri baseUrl, string apiToken, JsonSerializerOptions? dataSerializerOptions = null, ILogger<Client>? logger = null)
+        : this(CreateHttpClient(baseUrl, apiToken), dataSerializerOptions, logger)
     {
-        _baseUrl = baseUrl;
-        _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
+    }
+
+    public Client(HttpClient httpClient, JsonSerializerOptions? dataSerializerOptions = null, ILogger<Client>? logger = null)
+    {
+        _httpClient = httpClient;
 
         if (dataSerializerOptions is not null)
         {
@@ -69,7 +67,7 @@ public class Client : IClient
     {
         const string expectedEventType = "io.eventsourcingdb.api.ping-received";
 
-        var pingUrl = new Uri(_baseUrl, "/api/v1/ping");
+        const string pingUrl = "/api/v1/ping";
         _logger.LogTrace("Trying to ping '{Url}'...", pingUrl);
 
         try
@@ -98,7 +96,7 @@ public class Client : IClient
     {
         const string expectedEventType = "io.eventsourcingdb.api.api-token-verified";
 
-        var verifyUrl = new Uri(_baseUrl, "/api/v1/verify-api-token");
+        const string verifyUrl = "/api/v1/verify-api-token";
         _logger.LogTrace("Trying to verify API token using url '{Url}'...", verifyUrl);
 
         try
@@ -130,7 +128,7 @@ public class Client : IClient
         CancellationToken token = default)
     {
         preconditions ??= [];
-        var writeEventsUrl = new Uri(_baseUrl, "/api/v1/write-events");
+        const string writeEventsUrl = "/api/v1/write-events";
 
         _logger.LogTrace("Trying to write events using url '{Url}'...", writeEventsUrl);
 
@@ -180,7 +178,7 @@ public class Client : IClient
         ReadEventsOptions options,
         [EnumeratorCancellation] CancellationToken token = default)
     {
-        var readEventsUrl = new Uri(_baseUrl, "/api/v1/read-events");
+        const string readEventsUrl = "/api/v1/read-events";
 
         _logger.LogTrace("Trying to read events using url '{Url}'...", readEventsUrl);
 
@@ -242,7 +240,7 @@ public class Client : IClient
         string baseSubject,
         [EnumeratorCancellation] CancellationToken token = default)
     {
-        var readSubjectsUrl = new Uri(_baseUrl, "/api/v1/read-subjects");
+        const string readSubjectsUrl = "/api/v1/read-subjects";
 
         _logger.LogTrace("Trying to read subjects using url '{Url}'...", readSubjectsUrl);
 
@@ -303,7 +301,7 @@ public class Client : IClient
         ObserveEventsOptions options,
         [EnumeratorCancellation] CancellationToken token = default)
     {
-        var observeEventsUrl = new Uri(_baseUrl, "/api/v1/observe-events");
+        const string observeEventsUrl = "/api/v1/observe-events";
 
         _logger.LogTrace("Trying to observe events using url '{Url}'...", observeEventsUrl);
 
@@ -366,7 +364,7 @@ public class Client : IClient
     public async IAsyncEnumerable<EventType> ReadEventTypesAsync(
         [EnumeratorCancellation] CancellationToken token = default)
     {
-        var readEvenTypesUrl = new Uri(_baseUrl, "/api/v1/read-event-types");
+        const string readEvenTypesUrl = "/api/v1/read-event-types";
 
         _logger.LogTrace("Trying to read event types using url '{Url}'...", readEvenTypesUrl);
 
@@ -423,7 +421,7 @@ public class Client : IClient
         string eventType,
         CancellationToken token = default)
     {
-        var readEventTypeUrl = new Uri(_baseUrl, "/api/v1/read-event-type");
+        const string readEventTypeUrl = "/api/v1/read-event-type";
 
         _logger.LogTrace("Trying to read event type using url '{Url}'...", readEventTypeUrl);
 
@@ -454,7 +452,7 @@ public class Client : IClient
         JsonElement schema,
         CancellationToken token = default)
     {
-        var registerEventSchemaUrl = new Uri(_baseUrl, "/api/v1/register-event-schema");
+        const string registerEventSchemaUrl = "/api/v1/register-event-schema";
 
         var requestBody = new
         {
@@ -477,7 +475,7 @@ public class Client : IClient
         string query,
         [EnumeratorCancellation] CancellationToken token = default)
     {
-        var runEventQlQueryUrl = new Uri(_baseUrl, "/api/v1/run-eventql-query");
+        const string runEventQlQueryUrl = "/api/v1/run-eventql-query";
 
         _logger.LogTrace("Trying to run EventQL query using url '{Url}'...", runEventQlQueryUrl);
 
@@ -549,5 +547,20 @@ public class Client : IClient
         {
             throw new InvalidValueException($"Failed to deserialize query result into type '{typeof(TRow).Name}': {ex.Message}");
         }
+    }
+
+    private static HttpClient CreateHttpClient(Uri baseUrl, string apiToken)
+    {
+        var handler = new SocketsHttpHandler
+        {
+            PooledConnectionLifetime = TimeSpan.FromMinutes(2)
+        };
+        var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = baseUrl
+        };
+        httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
+
+        return httpClient;
     }
 }

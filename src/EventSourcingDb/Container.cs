@@ -1,4 +1,5 @@
 using System;
+using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -117,6 +118,11 @@ public class Container
     public IClient GetClient(JsonSerializerOptions? dataSerializerOptions = null)
     {
         return new Client(GetBaseUrl(), GetApiToken(), dataSerializerOptions);
+    }
+
+    public IClient GetClient(HttpClient httpClient, JsonSerializerOptions? dataSerializerOptions = null)
+    {
+        return new Client(httpClient, dataSerializerOptions);
     }
 
     public byte[] GetVerificationKey()
