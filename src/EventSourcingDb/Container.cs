@@ -115,6 +115,22 @@ public class Container
         }
     }
 
+    public async Task PauseAsync(CancellationToken token = default)
+    {
+        if (_container is not null)
+        {
+            await _container.PauseAsync(token).ConfigureAwait(false);
+        }
+    }
+
+    public async Task UnpauseAsync(CancellationToken token = default)
+    {
+        if (_container is not null)
+        {
+            await _container.UnpauseAsync(token).ConfigureAwait(false);
+        }
+    }
+
     public IClient GetClient(JsonSerializerOptions? dataSerializerOptions = null)
     {
         return new Client(GetBaseUrl(), GetApiToken(), dataSerializerOptions);

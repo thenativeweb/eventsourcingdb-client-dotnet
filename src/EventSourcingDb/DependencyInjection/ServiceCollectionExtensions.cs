@@ -1,4 +1,5 @@
 using System;
+using System.Net.Http.Headers;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -9,7 +10,7 @@ namespace EventSourcingDb.DependencyInjection;
 
 public static class ServiceCollectionExtensions
 {
-    public static void AddEventSourcingDb(
+    public static IHttpClientBuilder AddEventSourcingDb(
         this IServiceCollection services,
         IConfiguration configuration,
         Action<EventSourcingDbOptions>? configureOptions = null,
@@ -26,12 +27,16 @@ public static class ServiceCollectionExtensions
             services.PostConfigure(configureOptions);
         }
 
-        services.AddScoped<IClient>(sp =>
+        return services.AddHttpClient<IClient, Client>((client, sp) =>
             {
                 var options = sp.GetRequiredService<IOptions<EventSourcingDbOptions>>().Value;
+
+                client.BaseAddress = options.BaseUrl;
+                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", options.ApiToken);
+
                 var logger = sp.GetRequiredService<ILogger<Client>>();
 
-                return new Client(options.BaseUrl, options.ApiToken, jsonSerializerOptions, logger);
+                return new Client(client, jsonSerializerOptions, logger);
             }
         );
     }
