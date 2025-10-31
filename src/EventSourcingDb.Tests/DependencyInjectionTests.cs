@@ -47,10 +47,9 @@ public sealed class DependencyInjectionTests : EventSourcingDbTests
 
         await Container.PauseAsync();
 
-        var ping = async () => await client.PingAsync();
-
-        // With the container paused, ping fails (after one retry) according to configured timeout
-        await Assert.ThrowsAsync<TaskCanceledException>(ping);
+        // With the container paused, ping fails after one retry
+        // The task is canceled due to the configured timeout, thus we expect a TaskCanceledException
+        await Assert.ThrowsAsync<TaskCanceledException>(async () => await client.PingAsync());
 
         await Task.Run(async () =>
             {
@@ -59,7 +58,7 @@ public sealed class DependencyInjectionTests : EventSourcingDbTests
             }
         );
 
-        // With the container unpaused, within the retry delay, ping succeeds
+        // With the container unpaused within the retry delay, ping succeeds
         await client.PingAsync();
     }
 }
