@@ -51,7 +51,7 @@ public sealed class DependencyInjectionTests : EventSourcingDbTests
         // The task is canceled due to the configured timeout, thus we expect a TaskCanceledException.
         await Assert.ThrowsAsync<TaskCanceledException>(async () => await client.PingAsync());
 
-        await Task.Run(async () =>
+        _ = Task.Run(async () =>
             {
                 await Task.Delay(simulatedNetworkOutageDurationInMs);
                 await Container.UnpauseAsync();
