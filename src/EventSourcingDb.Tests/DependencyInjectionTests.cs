@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Net.Http;
+using System.Threading;
 using System.Threading.Tasks;
 using EventSourcingDb.DependencyInjection;
 using Microsoft.Extensions.Configuration;
@@ -8,13 +10,21 @@ using Xunit;
 
 namespace EventSourcingDb.Tests;
 
-public sealed class DependencyInjectionTests : EventSourcingDbTests
+public sealed class DependencyInjectionTests
 {
     [Fact]
-    public async Task ClientIsAvailableUsingDependencyInjection()
+    public async Task HttpClientConfigurationViaDependencyInjectionIsWorking()
     {
-        var url = Container!.GetBaseUrl();
-        var apiToken = Container!.GetApiToken();
+        var imageVersion = DockerfileHelper.GetImageVersionFromDockerfile();
+
+        var container = new Container()
+            .WithImageTag(imageVersion)
+            .WithSigningKey();
+
+        await container.StartAsync();
+
+        var url = container.GetBaseUrl();
+        var apiToken = container.GetApiToken();
 
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(
@@ -25,9 +35,14 @@ public sealed class DependencyInjectionTests : EventSourcingDbTests
             )
             .Build();
 
+        const int simulatedNetworkOutageDurationInMs = 500;
+        const int retryDelayInMs = simulatedNetworkOutageDurationInMs + 100;
+
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddEventSourcingDb(configuration);
+        services.AddEventSourcingDb(configuration)
+            .AddHttpMessageHandler(() => new RetryOnceAfter(retryDelayInMs))
+            .ConfigureHttpClient(client => client.Timeout = TimeSpan.FromSeconds(10));;
 
         var serviceProvider = services.BuildServiceProvider();
 
@@ -38,6 +53,42 @@ public sealed class DependencyInjectionTests : EventSourcingDbTests
             throw new Exception("IClient is not registered.");
         }
 
+        await container.PauseAsync();
+
+        var ping = async () => await client.PingAsync();
+
+        // With the container paused, ping fails (after one retry) according to configured timeout
+        await Assert.ThrowsAsync<TaskCanceledException>(ping);
+
+        await Task.Run(async () =>
+            {
+                await Task.Delay(simulatedNetworkOutageDurationInMs);
+                await container.UnpauseAsync();
+            }
+        );
+
+        // With the container unpaused, within the retry delay, ping succeeds
         await client.PingAsync();
+    }
+}
+
+public class RetryOnceAfter(int delayInMs) : DelegatingHandler
+{
+    protected override async Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        int attempt = 0;
+        while (true)
+        {
+            try
+            {
+                return await base.SendAsync(request, cancellationToken);
+            }
+            catch (Exception) when (attempt < 2)
+            {
+                attempt++;
+                await Task.Delay(delayInMs, cancellationToken);
+            }
+        }
     }
 }
