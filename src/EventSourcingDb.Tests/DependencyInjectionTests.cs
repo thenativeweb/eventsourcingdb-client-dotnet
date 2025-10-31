@@ -10,21 +10,13 @@ using Xunit;
 
 namespace EventSourcingDb.Tests;
 
-public sealed class DependencyInjectionTests
+public sealed class DependencyInjectionTests : EventSourcingDbTests
 {
     [Fact]
     public async Task HttpClientConfigurationViaDependencyInjectionIsWorking()
     {
-        var imageVersion = DockerfileHelper.GetImageVersionFromDockerfile();
-
-        var container = new Container()
-            .WithImageTag(imageVersion)
-            .WithSigningKey();
-
-        await container.StartAsync();
-
-        var url = container.GetBaseUrl();
-        var apiToken = container.GetApiToken();
+        var url = Container!.GetBaseUrl();
+        var apiToken = Container.GetApiToken();
 
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(
@@ -53,7 +45,7 @@ public sealed class DependencyInjectionTests
             throw new Exception("IClient is not registered.");
         }
 
-        await container.PauseAsync();
+        await Container.PauseAsync();
 
         var ping = async () => await client.PingAsync();
 
@@ -63,7 +55,7 @@ public sealed class DependencyInjectionTests
         await Task.Run(async () =>
             {
                 await Task.Delay(simulatedNetworkOutageDurationInMs);
-                await container.UnpauseAsync();
+                await Container.UnpauseAsync();
             }
         );
 
