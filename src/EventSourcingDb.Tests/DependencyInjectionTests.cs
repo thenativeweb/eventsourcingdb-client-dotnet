@@ -42,7 +42,7 @@ public sealed class DependencyInjectionTests
         services.AddLogging();
         services.AddEventSourcingDb(configuration)
             .AddHttpMessageHandler(() => new RetryOnceAfter(retryDelayInMs))
-            .ConfigureHttpClient(client => client.Timeout = TimeSpan.FromSeconds(10));;
+            .ConfigureHttpClient(client => client.Timeout = TimeSpan.FromSeconds(10));
 
         var serviceProvider = services.BuildServiceProvider();
 
