@@ -81,6 +81,21 @@ builder.Services.AddEventSourcingDb(builder.Configuration, options =>
 });
 ```
 
+### Configuring the HttpClient via Dependency Injection
+
+The `AddEventSourcingDb` method returns an `IHttpClientBuilder`, which allows you to configure the underlying `HttpClient` and add custom message handlers. This is useful for setting custom timeouts, implementing retry policies, adding logging or tracing handlers, and configuring advanced HTTP settings.
+
+```csharp
+builder.Services.AddEventSourcingDb(builder.Configuration)
+    .ConfigureHttpClient(client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(30);
+    })
+    .AddHttpMessageHandler(() => new MyCustomRetryHandler());
+```
+
+This approach integrates seamlessly with .NET's `IHttpClientFactory`, ensuring proper connection pooling and lifecycle management.
+
 ### Using a Custom HttpClient
 
 For advanced scenarios, you can inject a custom `HttpClient` into the `Client` constructor. This is useful when you need to:
