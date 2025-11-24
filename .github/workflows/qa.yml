@@ -8,14 +8,20 @@ concurrency:
 
 jobs:
   qa:
-    name: QA
+    name: QA (.NET ${{ matrix.dotnet-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
+    strategy:
+      matrix:
+        dotnet-version: ['8.0.x', '9.0.x', '10.0.x']
 
     steps:
       - name: Clone repository
         uses: actions/checkout@v5
-      - name: Use .NET
+      - name: Use .NET ${{ matrix.dotnet-version }}
         uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ matrix.dotnet-version }}
       - name: Run QA
         run: make qa
