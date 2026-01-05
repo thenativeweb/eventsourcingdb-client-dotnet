@@ -56,8 +56,7 @@ public class Container
             "--https-enabled=false"
         ];
 
-        var builder = new ContainerBuilder()
-            .WithImage($"{ImageName}:{_imageTag}")
+        var builder = new ContainerBuilder($"{ImageName}:{_imageTag}")
             .WithExposedPort(_internalPort)
             .WithPortBinding(_internalPort, assignRandomHostPort: true);
 
