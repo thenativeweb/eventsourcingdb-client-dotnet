@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
+using Microsoft.Extensions.Logging;
 using NSec.Cryptography;
 
 namespace EventSourcingDb;
@@ -130,9 +131,9 @@ public class Container
         }
     }
 
-    public IClient GetClient(JsonSerializerOptions? dataSerializerOptions = null)
+    public IClient GetClient(JsonSerializerOptions? dataSerializerOptions = null, ILogger<Client>? logger = null)
     {
-        return new Client(GetBaseUrl(), GetApiToken(), dataSerializerOptions);
+        return new Client(GetBaseUrl(), GetApiToken(), dataSerializerOptions, logger);
     }
 
     public IClient GetClient(HttpClient httpClient, JsonSerializerOptions? dataSerializerOptions = null)

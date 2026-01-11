@@ -4,10 +4,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using EventSourcingDb.Types;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace EventSourcingDb.Tests;
 
-public class ObserveEventsTests : EventSourcingDbTests
+public class ObserveEventsTests(ITestOutputHelper testOutputHelper) : EventSourcingDbTests
 {
     [Fact]
     public async Task ObserveNoEventsIfTheDatabaseIsEmpty()
@@ -178,6 +179,26 @@ public class ObserveEventsTests : EventSourcingDbTests
                 Assert.Equal(secondData, foundEvent.GetData<EventData>());
             }
         );
+    }
+
+    // This test exists to ensure that heartbeats are being logged as expected.
+    // In a previous version we logged heartbeats too often.
+    // Here we use a logger to be able to observe the heartbeat logs when running the test.
+    [Fact]
+    public async Task HeartbeatIsLoggedEverySecond()
+    {
+        var logger = GetClientLogger(testOutputHelper);
+        var client = Container!.GetClient(logger: logger);
+
+        var options = new ObserveEventsOptions(Recursive: true);
+
+        var timeoutToReceiveTwoHeartbeats = TimeSpan.FromMilliseconds(2000);
+        using var source = new CancellationTokenSource(timeoutToReceiveTwoHeartbeats);
+
+        await foreach (var _ in client.ObserveEventsAsync("/", options, source.Token))
+        {
+            // We don't care about the events, just the heartbeats
+        }
     }
 
     private record struct EventData(int Value);
