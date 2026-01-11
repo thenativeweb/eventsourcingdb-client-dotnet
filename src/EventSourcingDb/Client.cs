@@ -198,14 +198,17 @@ public class Client : IClient
         await response.ThrowIfNotSuccessStatusCode(token);
 
         await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
-        using var reader = new StreamReader(stream);
+        await using var lineReader = new StreamLineReader(stream);
 
-        var eventLine = await reader
-            .ReadLineAsync(token)
-            .ConfigureAwait(false);
-
-        while (eventLine is not null)
+        while (true)
         {
+            var eventLine = await lineReader.ReadLineAsync(token).ConfigureAwait(false);
+
+            if (eventLine is null)
+            {
+                yield break;
+            }
+
             var line = JsonSerializer
                 .Deserialize<Line>(eventLine, _defaultSerializerOptions)
                 .ThrowIfNull(eventLine);
@@ -229,10 +232,6 @@ public class Client : IClient
                 default:
                     throw new Exception($"Failed to handle unsupported line type '{line.Type}'.");
             }
-
-            eventLine = await reader
-                .ReadLineAsync(token)
-                .ConfigureAwait(false);
         }
     }
 
@@ -260,14 +259,17 @@ public class Client : IClient
         await response.ThrowIfNotSuccessStatusCode(token);
 
         await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
-        using var reader = new StreamReader(stream);
+        await using var lineReader = new StreamLineReader(stream);
 
-        var subjectLine = await reader
-            .ReadLineAsync(token)
-            .ConfigureAwait(false);
-
-        while (subjectLine is not null)
+        while (true)
         {
+            var subjectLine = await lineReader.ReadLineAsync(token).ConfigureAwait(false);
+
+            if (subjectLine is null)
+            {
+                yield break;
+            }
+
             var line = JsonSerializer
                 .Deserialize<Line>(subjectLine, _defaultSerializerOptions)
                 .ThrowIfNull(subjectLine);
@@ -289,10 +291,6 @@ public class Client : IClient
                 default:
                     throw new Exception($"Failed to handle unsupported line type '{line.Type}'.");
             }
-
-            subjectLine = await reader
-                .ReadLineAsync(token)
-                .ConfigureAwait(false);
         }
     }
 
@@ -321,14 +319,17 @@ public class Client : IClient
         await response.ThrowIfNotSuccessStatusCode(token);
 
         await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
-        using var reader = new StreamReader(stream);
+        await using var lineReader = new StreamLineReader(stream);
 
-        var eventLine = await reader
-            .ReadLineAsync(token)
-            .ConfigureAwait(false);
-
-        while (eventLine is not null)
+        while (true)
         {
+            var eventLine = await lineReader.ReadLineAsync(token).ConfigureAwait(false);
+
+            if (eventLine is null)
+            {
+                yield break;
+            }
+
             var line = JsonSerializer
                 .Deserialize<Line>(eventLine, _defaultSerializerOptions)
                 .ThrowIfNull(eventLine);
@@ -351,14 +352,10 @@ public class Client : IClient
                     throw new Exception(line.Payload.GetString() ?? "unknown error");
                 case "heartbeat":
                     _logger.LogTrace("Heartbeat received.");
-                    continue;
+                    break;
                 default:
                     throw new Exception($"Failed to handle unsupported line type '{line.Type}'.");
             }
-
-            eventLine = await reader
-                .ReadLineAsync(token)
-                .ConfigureAwait(false);
         }
     }
 
@@ -378,14 +375,17 @@ public class Client : IClient
         await response.ThrowIfNotSuccessStatusCode(token);
 
         await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
-        using var reader = new StreamReader(stream);
+        await using var lineReader = new StreamLineReader(stream);
 
-        var eventTypesLine = await reader
-            .ReadLineAsync(token)
-            .ConfigureAwait(false);
-
-        while (eventTypesLine is not null)
+        while (true)
         {
+            var eventTypesLine = await lineReader.ReadLineAsync(token).ConfigureAwait(false);
+
+            if (eventTypesLine is null)
+            {
+                yield break;
+            }
+
             var line = JsonSerializer
                 .Deserialize<Line>(eventTypesLine, _defaultSerializerOptions)
                 .ThrowIfNull(eventTypesLine);
@@ -407,14 +407,10 @@ public class Client : IClient
                     line.ThrowIfNotExpectedError();
                     throw new Exception(line.Payload.GetString() ?? "unknown error");
                 case "heartbeat":
-                    continue;
+                    break;
                 default:
                     throw new Exception($"Failed to handle unsupported line type '{line.Type}'.");
             }
-
-            eventTypesLine = await reader
-                .ReadLineAsync(token)
-                .ConfigureAwait(false);
         }
     }
 
@@ -494,14 +490,17 @@ public class Client : IClient
         await response.ThrowIfNotSuccessStatusCode(token);
 
         await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
-        using var reader = new StreamReader(stream);
+        await using var lineReader = new StreamLineReader(stream);
 
-        var queryLine = await reader
-            .ReadLineAsync(token)
-            .ConfigureAwait(false);
-
-        while (queryLine is not null)
+        while (true)
         {
+            var queryLine = await lineReader.ReadLineAsync(token).ConfigureAwait(false);
+
+            if (queryLine is null)
+            {
+                yield break;
+            }
+
             var line = JsonSerializer
                 .Deserialize<Line>(queryLine, _defaultSerializerOptions)
                 .ThrowIfNull(queryLine);
@@ -515,14 +514,10 @@ public class Client : IClient
                     line.ThrowIfNotExpectedError();
                     throw new Exception(line.Payload.GetString() ?? "unknown error");
                 case "heartbeat":
-                    continue;
+                    break;
                 default:
                     throw new Exception($"Failed to handle unsupported line type '{line.Type}'.");
             }
-
-            queryLine = await reader
-                .ReadLineAsync(token)
-                .ConfigureAwait(false);
         }
     }
 
