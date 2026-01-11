@@ -350,7 +350,7 @@ public class Client : IClient
                     line.ThrowIfNotExpectedError();
                     throw new Exception(line.Payload.GetString() ?? "unknown error");
                 case "heartbeat":
-                    _logger.LogTrace("Heartbeat received");
+                    _logger.LogTrace("Heartbeat received.");
                     continue;
                 default:
                     throw new Exception($"Failed to handle unsupported line type '{line.Type}'.");
