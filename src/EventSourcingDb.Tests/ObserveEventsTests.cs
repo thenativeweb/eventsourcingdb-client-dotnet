@@ -195,9 +195,16 @@ public class ObserveEventsTests(ITestOutputHelper testOutputHelper) : EventSourc
         var timeoutToReceiveTwoHeartbeats = TimeSpan.FromMilliseconds(2000);
         using var source = new CancellationTokenSource(timeoutToReceiveTwoHeartbeats);
 
-        await foreach (var _ in client.ObserveEventsAsync("/", options, source.Token))
+        try
         {
-            // We don't care about the events, just the heartbeats
+            await foreach (var _ in client.ObserveEventsAsync("/", options, source.Token))
+            {
+                // We don't care about the events, just the heartbeats
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Ignored, we cancel on our own
         }
     }
 
