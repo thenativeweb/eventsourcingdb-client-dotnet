@@ -14,7 +14,7 @@
 
   <ItemGroup>
     <PackageReference Include="NSec.Cryptography" Version="25.4.0" />
-    <PackageReference Include="System.IO.Pipelines" Version="9.0.0" />
+    <PackageReference Include="System.IO.Pipelines" Version="10.0.2" />
     <PackageReference Include="Testcontainers" Version="4.10.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.1"/>
     <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.2"/>
