@@ -95,7 +95,7 @@ public class ReadEventTypesTest : EventSourcingDbTests
             Assert.Equal(eventType, type.Type);
             Assert.True(type.IsPhantom);
             Assert.NotNull(type.Schema);
-            Assert.Equal(type.Schema.Value, schema);
+            Assert.True(JsonElementComparer.Equals(type.Schema.Value, schema));
         });
     }
 
