@@ -14,7 +14,7 @@ public sealed class PingTests : EventSourcingDbTests
         var client = Container!.GetClient();
 
         // Should not throw.
-        await client.PingAsync();
+        await client.PingAsync(TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -28,7 +28,7 @@ public sealed class PingTests : EventSourcingDbTests
 
         await Assert.ThrowsAsync<HttpRequestException>(async () =>
         {
-            await client.PingAsync();
+            await client.PingAsync(TestContext.Current.CancellationToken);
         });
     }
 }

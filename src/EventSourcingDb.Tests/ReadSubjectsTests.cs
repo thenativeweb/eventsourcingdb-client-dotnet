@@ -11,7 +11,9 @@ public class ReadSubjectsTests : EventSourcingDbTests
     public async Task ReadsNoSubjectsIfTheDatabaseIsEmpty()
     {
         var client = Container!.GetClient();
-        var subjectsRead = await client.ReadSubjectsAsync("/").ToListAsync();
+        var subjectsRead = await client
+            .ReadSubjectsAsync("/", TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Empty(subjectsRead);
     }
@@ -34,9 +36,11 @@ public class ReadSubjectsTests : EventSourcingDbTests
             Data: new EventData(42)
         );
 
-        await client.WriteEventsAsync([firstEvent, secondEvent]);
+        await client.WriteEventsAsync([firstEvent, secondEvent], token: TestContext.Current.CancellationToken);
 
-        var subjectsRead = await client.ReadSubjectsAsync("/").ToListAsync();
+        var subjectsRead = await client
+            .ReadSubjectsAsync("/", TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Collection(subjectsRead,
             subject => Assert.Equal("/", subject),
@@ -64,9 +68,11 @@ public class ReadSubjectsTests : EventSourcingDbTests
             Data: new EventData(42)
         );
 
-        await client.WriteEventsAsync([firstEvent, secondEvent]);
+        await client.WriteEventsAsync([firstEvent, secondEvent], token: TestContext.Current.CancellationToken);
 
-        var subjectsRead = await client.ReadSubjectsAsync("/test").ToListAsync();
+        var subjectsRead = await client
+            .ReadSubjectsAsync("/test", TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Collection(subjectsRead,
             subject => Assert.Equal("/test", subject),

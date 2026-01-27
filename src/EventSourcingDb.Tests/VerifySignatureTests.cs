@@ -20,7 +20,7 @@ public class VerifySignatureTests : IAsyncDisposable
         _container = new Container()
             .WithImageTag(imageVersion);
 
-        await _container.StartAsync();
+        await _container.StartAsync(TestContext.Current.CancellationToken);
 
         var client = _container!.GetClient();
 
@@ -31,7 +31,7 @@ public class VerifySignatureTests : IAsyncDisposable
             Data: new EventData(42)
         );
 
-        var writtenEvents = await client.WriteEventsAsync([eventCandidate]);
+        var writtenEvents = await client.WriteEventsAsync([eventCandidate], token: TestContext.Current.CancellationToken);
 
         var @event = writtenEvents.Single();
 
@@ -55,7 +55,7 @@ public class VerifySignatureTests : IAsyncDisposable
             .WithImageTag(imageVersion)
             .WithSigningKey();
 
-        await _container.StartAsync();
+        await _container.StartAsync(TestContext.Current.CancellationToken);
 
         var client = _container!.GetClient();
 
@@ -66,7 +66,7 @@ public class VerifySignatureTests : IAsyncDisposable
             Data: new EventData(42)
         );
 
-        var writtenEvents = await client.WriteEventsAsync([eventCandidate]);
+        var writtenEvents = await client.WriteEventsAsync([eventCandidate], token: TestContext.Current.CancellationToken);
 
         var @event = writtenEvents.Single();
 
@@ -88,7 +88,7 @@ public class VerifySignatureTests : IAsyncDisposable
             .WithImageTag(imageVersion)
             .WithSigningKey();
 
-        await _container.StartAsync();
+        await _container.StartAsync(TestContext.Current.CancellationToken);
 
         var client = _container!.GetClient();
 
@@ -99,7 +99,7 @@ public class VerifySignatureTests : IAsyncDisposable
             Data: new EventData(42)
         );
 
-        var writtenEvents = await client.WriteEventsAsync([eventCandidate]);
+        var writtenEvents = await client.WriteEventsAsync([eventCandidate], token: TestContext.Current.CancellationToken);
 
         var @event = writtenEvents.Single();
         @event.VerifySignature(_container!.GetVerificationKey());

@@ -32,7 +32,7 @@ public class RegisterEventSchemaTests : EventSourcingDbTests
 
         var schema = JsonDocument.Parse(SchemaJson).RootElement;
 
-        var exception = await Record.ExceptionAsync(() => client.RegisterEventSchemaAsync(eventType, schema));
+        var exception = await Record.ExceptionAsync(() => client.RegisterEventSchemaAsync(eventType, schema, TestContext.Current.CancellationToken));
 
         Assert.Null(exception);
     }
@@ -46,8 +46,10 @@ public class RegisterEventSchemaTests : EventSourcingDbTests
 
         var schema = JsonDocument.Parse(SchemaJson).RootElement;
 
-        await client.RegisterEventSchemaAsync(eventType, schema);
+        var registerEventSchemaAsync = () => client.RegisterEventSchemaAsync(eventType, schema, TestContext.Current.CancellationToken);
 
-        await Assert.ThrowsAsync<HttpRequestException>(() => client.RegisterEventSchemaAsync(eventType, schema));
+        await registerEventSchemaAsync();
+
+        await Assert.ThrowsAsync<HttpRequestException>(registerEventSchemaAsync);
     }
 }

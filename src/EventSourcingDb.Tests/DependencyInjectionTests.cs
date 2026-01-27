@@ -45,21 +45,23 @@ public sealed class DependencyInjectionTests : EventSourcingDbTests
             throw new Exception("IClient is not registered.");
         }
 
-        await Container.PauseAsync();
+        await Container.PauseAsync(TestContext.Current.CancellationToken);
 
         // With the container paused, ping fails after one retry.
         // The task is canceled due to the configured timeout, thus we expect a TaskCanceledException.
-        await Assert.ThrowsAsync<TaskCanceledException>(async () => await client.PingAsync());
+        await Assert.ThrowsAsync<TaskCanceledException>(async () => await client.PingAsync(TestContext.Current.CancellationToken));
 
-        _ = Task.Run(async () =>
+        _ = Task.Run(
+            async () =>
             {
                 await Task.Delay(simulatedNetworkOutageDurationInMs);
                 await Container.UnpauseAsync();
             }
+            , TestContext.Current.CancellationToken
         );
 
         // With the container unpaused within the retry delay, ping succeeds.
-        await client.PingAsync();
+        await client.PingAsync(TestContext.Current.CancellationToken);
     }
 }
 

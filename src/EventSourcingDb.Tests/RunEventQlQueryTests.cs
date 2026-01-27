@@ -14,7 +14,9 @@ public class RunEventQlQueryTests : EventSourcingDbTests
     {
         var client = Container!.GetClient();
 
-        var rowsRead = await client.RunEventQlQueryAsync<Event>("FROM e IN events PROJECT INTO e").ToListAsync();
+        var rowsRead = await client
+            .RunEventQlQueryAsync<Event>("FROM e IN events PROJECT INTO e", TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Empty(rowsRead);
     }
@@ -40,9 +42,11 @@ public class RunEventQlQueryTests : EventSourcingDbTests
             Data: secondData
         );
 
-        await client.WriteEventsAsync([firstEvent, secondEvent]);
+        await client.WriteEventsAsync([firstEvent, secondEvent], token: TestContext.Current.CancellationToken);
 
-        var rowsRead = await client.RunEventQlQueryAsync<Event>("FROM e IN events PROJECT INTO e").ToListAsync();
+        var rowsRead = await client
+            .RunEventQlQueryAsync<Event>("FROM e IN events PROJECT INTO e", TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Collection(rowsRead,
             row =>
@@ -82,13 +86,15 @@ public class RunEventQlQueryTests : EventSourcingDbTests
         );
         List<EventCandidate> candidates = [firstEvent, secondEvent];
 
-        await client.WriteEventsAsync(candidates);
+        await client.WriteEventsAsync(candidates, token: TestContext.Current.CancellationToken);
 
         const string query =
             "FROM e IN events " +
             "WHERE e.type == \"io.eventsourcingdb.test\"" +
             "PROJECT INTO { average: AVG(e.data.value), count: COUNT() } ";
-        var rowsRead = await client.RunEventQlQueryAsync<EventDataAggregation>(query).ToListAsync();
+        var rowsRead = await client
+            .RunEventQlQueryAsync<EventDataAggregation>(query, TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
 
         var aggregation = Assert.Single(rowsRead);
         Assert.Equal(32.5, aggregation.Average);
@@ -108,11 +114,11 @@ public class RunEventQlQueryTests : EventSourcingDbTests
             Data: eventData
         );
 
-        await client.WriteEventsAsync([eventCandidate]);
+        await client.WriteEventsAsync([eventCandidate], token: TestContext.Current.CancellationToken);
 
         await Assert.ThrowsAsync<InvalidValueException>(async () =>
         {
-            await foreach (var _ in client.RunEventQlQueryAsync<string>("FROM e IN events PROJECT INTO e"))
+            await foreach (var _ in client.RunEventQlQueryAsync<string>("FROM e IN events PROJECT INTO e", TestContext.Current.CancellationToken))
             {
                 throw new NotImplementedException();
             }
@@ -132,9 +138,11 @@ public class RunEventQlQueryTests : EventSourcingDbTests
             Data: eventData
         );
 
-        await client.WriteEventsAsync([eventCandidate]);
+        await client.WriteEventsAsync([eventCandidate], token: TestContext.Current.CancellationToken);
 
-        var rowsRead = await client.RunEventQlQueryAsync<string?>("FROM e IN events PROJECT INTO null").ToListAsync();
+        var rowsRead = await client
+            .RunEventQlQueryAsync<string?>("FROM e IN events PROJECT INTO null", TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(rowsRead);
         Assert.Null(rowsRead[0]);

@@ -26,7 +26,7 @@ public sealed class CustomHttpClientTests : EventSourcingDbTests
 
         var client = new Client(httpClient);
 
-        await client.PingAsync();
+        await client.PingAsync(TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -44,7 +44,7 @@ public sealed class CustomHttpClientTests : EventSourcingDbTests
 
         var client = new Client(httpClient);
 
-        await client.PingAsync();
+        await client.PingAsync(TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -62,6 +62,6 @@ public sealed class CustomHttpClientTests : EventSourcingDbTests
 
         var client = Container.GetClient(httpClient);
 
-        await client.PingAsync();
+        await client.PingAsync(TestContext.Current.CancellationToken);
     }
 }

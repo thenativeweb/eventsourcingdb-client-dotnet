@@ -22,7 +22,7 @@ public class VerifyHashTests : EventSourcingDbTests
             Data: new EventData(42)
         );
 
-        var writtenEvents = await client.WriteEventsAsync([eventCandidate]);
+        var writtenEvents = await client.WriteEventsAsync([eventCandidate], token: TestContext.Current.CancellationToken);
 
         var @event = writtenEvents.Single();
         @event.VerifyHash();
@@ -40,7 +40,7 @@ public class VerifyHashTests : EventSourcingDbTests
             Data: new EventData(42)
         );
 
-        var writtenEvents = await client.WriteEventsAsync([eventCandidate]);
+        var writtenEvents = await client.WriteEventsAsync([eventCandidate], token: TestContext.Current.CancellationToken);
 
         var @event = writtenEvents.Single();
 

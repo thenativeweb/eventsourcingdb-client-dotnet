@@ -25,7 +25,7 @@ public class CustomSerializationOptionsTests : EventSourcingDbTests
             Data: new EventData(MyEnum.Foo)
         );
 
-        var writtenEvents = await client.WriteEventsAsync([eventCandidate]);
+        var writtenEvents = await client.WriteEventsAsync([eventCandidate], token: TestContext.Current.CancellationToken);
 
         var writtenEvent = writtenEvents[0];
         var eventDataJsonString = writtenEvent.Data.ToString();

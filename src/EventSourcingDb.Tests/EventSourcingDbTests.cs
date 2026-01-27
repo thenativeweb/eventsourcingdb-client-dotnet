@@ -1,7 +1,6 @@
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace EventSourcingDb.Tests;
 
@@ -9,19 +8,19 @@ public class EventSourcingDbTests : IAsyncLifetime
 {
     protected Container? Container { get; private set; }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         var imageVersion = DockerfileHelper.GetImageVersionFromDockerfile();
         Container = new Container().WithImageTag(imageVersion);
         await Container.StartAsync();
     }
 
-    public ILogger<Client> GetClientLogger(ITestOutputHelper testOutputHelper)
+    protected ILogger<Client> GetClientLogger(ITestOutputHelper testOutputHelper)
     {
         return new XUnitLogger<Client>(testOutputHelper);
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         if (Container is not null)
         {
