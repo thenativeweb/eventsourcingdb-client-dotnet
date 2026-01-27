@@ -11,7 +11,9 @@ public class ReadEventsTests : EventSourcingDbTests
     public async Task ReadsNoEventsIfTheDatabaseIsEmpty()
     {
         var client = Container!.GetClient();
-        var eventsRead = await client.ReadEventsAsync("/", new ReadEventsOptions(Recursive: true)).ToListAsync();
+        var eventsRead = await client
+            .ReadEventsAsync("/", new ReadEventsOptions(Recursive: true), TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Empty(eventsRead);
     }
@@ -37,9 +39,11 @@ public class ReadEventsTests : EventSourcingDbTests
             Data: secondData
         );
 
-        await client.WriteEventsAsync([firstEvent, secondEvent]);
+        await client.WriteEventsAsync([firstEvent, secondEvent], token: TestContext.Current.CancellationToken);
 
-        var foundEvents = await client.ReadEventsAsync("/test", new ReadEventsOptions(Recursive: false)).ToListAsync();
+        var foundEvents = await client
+            .ReadEventsAsync("/test", new ReadEventsOptions(Recursive: false), TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, foundEvents.Count);
     }
@@ -65,9 +69,11 @@ public class ReadEventsTests : EventSourcingDbTests
             Data: secondData
         );
 
-        await client.WriteEventsAsync([firstEvent, secondEvent]);
+        await client.WriteEventsAsync([firstEvent, secondEvent], token: TestContext.Current.CancellationToken);
 
-        var foundEvents = await client.ReadEventsAsync("/", new ReadEventsOptions(Recursive: true)).ToListAsync();
+        var foundEvents = await client
+            .ReadEventsAsync("/", new ReadEventsOptions(Recursive: true), TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, foundEvents.Count);
     }
@@ -93,11 +99,13 @@ public class ReadEventsTests : EventSourcingDbTests
             Data: secondData
         );
 
-        await client.WriteEventsAsync([firstEvent, secondEvent]);
+        await client.WriteEventsAsync([firstEvent, secondEvent], token: TestContext.Current.CancellationToken);
 
         var options = new ReadEventsOptions(Recursive: false, Order: Order.Chronological);
 
-        var foundEvents = await client.ReadEventsAsync("/test", options).ToListAsync();
+        var foundEvents = await client
+            .ReadEventsAsync("/test", options, TestContext.Current.CancellationToken)
+            .ToListAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Collection(foundEvents,
             foundEvent =>
@@ -134,11 +142,13 @@ public class ReadEventsTests : EventSourcingDbTests
             Data: secondData
         );
 
-        await client.WriteEventsAsync([firstEvent, secondEvent]);
+        await client.WriteEventsAsync([firstEvent, secondEvent], token: TestContext.Current.CancellationToken);
 
         var options = new ReadEventsOptions(Recursive: false, Order: Order.Antichronological);
 
-        var foundEvents = await client.ReadEventsAsync("/test", options).ToListAsync();
+        var foundEvents = await client
+            .ReadEventsAsync("/test", options, TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Collection(foundEvents,
             foundEvent =>
@@ -175,11 +185,13 @@ public class ReadEventsTests : EventSourcingDbTests
             Data: secondData
         );
 
-        await client.WriteEventsAsync([firstEvent, secondEvent]);
+        await client.WriteEventsAsync([firstEvent, secondEvent], token: TestContext.Current.CancellationToken);
 
         var options = new ReadEventsOptions(Recursive: false, LowerBound: new Bound("1", BoundType.Inclusive));
 
-        var foundEvents = await client.ReadEventsAsync("/test", options).ToListAsync();
+        var foundEvents = await client
+            .ReadEventsAsync("/test", options, TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(foundEvents);
         Assert.Collection(foundEvents,
@@ -212,11 +224,13 @@ public class ReadEventsTests : EventSourcingDbTests
             Data: secondData
         );
 
-        await client.WriteEventsAsync([firstEvent, secondEvent]);
+        await client.WriteEventsAsync([firstEvent, secondEvent], token: TestContext.Current.CancellationToken);
 
         var options = new ReadEventsOptions(Recursive: false, UpperBound: new Bound("0", BoundType.Inclusive));
 
-        var foundEvents = await client.ReadEventsAsync("/test", options).ToListAsync();
+        var foundEvents = await client
+            .ReadEventsAsync("/test", options, TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(foundEvents);
         Assert.Collection(foundEvents,
@@ -249,7 +263,7 @@ public class ReadEventsTests : EventSourcingDbTests
             Data: secondData
         );
 
-        await client.WriteEventsAsync([firstEvent, secondEvent]);
+        await client.WriteEventsAsync([firstEvent, secondEvent], token: TestContext.Current.CancellationToken);
 
         var options = new ReadEventsOptions(
             Recursive: false,
@@ -260,7 +274,9 @@ public class ReadEventsTests : EventSourcingDbTests
             )
         );
 
-        var foundEvents = await client.ReadEventsAsync("/test", options).ToListAsync();
+        var foundEvents = await client
+            .ReadEventsAsync("/test", options, TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(foundEvents);
         Assert.Collection(foundEvents,

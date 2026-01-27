@@ -1,4 +1,3 @@
-using System;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -22,7 +21,7 @@ public class WriteEventsTests : EventSourcingDbTests
             Data: new EventData(42)
         );
 
-        var writtenEvents = await client.WriteEventsAsync([eventCandidate]);
+        var writtenEvents = await client.WriteEventsAsync([eventCandidate], token: TestContext.Current.CancellationToken);
 
         Assert.Single(writtenEvents);
         Assert.Collection(writtenEvents, writtenEvent => Assert.Equal("0", writtenEvent.Id));
@@ -49,7 +48,7 @@ public class WriteEventsTests : EventSourcingDbTests
             Data: secondData
         );
 
-        var writtenEvents = await client.WriteEventsAsync([firstEvent, secondEvent]);
+        var writtenEvents = await client.WriteEventsAsync([firstEvent, secondEvent], token: TestContext.Current.CancellationToken);
 
         Assert.Equal(2, writtenEvents.Count);
         Assert.Collection(writtenEvents,
@@ -87,12 +86,13 @@ public class WriteEventsTests : EventSourcingDbTests
             Data: secondData
         );
 
-        _ = await client.WriteEventsAsync([firstEvent]);
+        await client.WriteEventsAsync([firstEvent], token: TestContext.Current.CancellationToken);
 
         var error = await Assert.ThrowsAsync<HttpRequestException>(async () =>
             await client.WriteEventsAsync(
                 [secondEvent],
-                [Precondition.IsSubjectPristinePrecondition("/test")]
+                [Precondition.IsSubjectPristinePrecondition("/test")],
+                TestContext.Current.CancellationToken
             )
         );
 
@@ -123,17 +123,19 @@ public class WriteEventsTests : EventSourcingDbTests
         var error = await Assert.ThrowsAsync<HttpRequestException>(async () =>
             await client.WriteEventsAsync(
                 [secondEvent],
-                [Precondition.IsSubjectPopulatedPrecondition("/test")]
+                [Precondition.IsSubjectPopulatedPrecondition("/test")],
+                TestContext.Current.CancellationToken
             )
         );
 
         Assert.Equal(HttpStatusCode.Conflict, error.StatusCode);
 
-        _ = await client.WriteEventsAsync([firstEvent]);
+        await client.WriteEventsAsync([firstEvent], token: TestContext.Current.CancellationToken);
 
         var writtenEvents = await client.WriteEventsAsync(
             [secondEvent],
-            [Precondition.IsSubjectPopulatedPrecondition("/test")]
+            [Precondition.IsSubjectPopulatedPrecondition("/test")],
+            TestContext.Current.CancellationToken
         );
 
         Assert.Single(writtenEvents);
@@ -161,12 +163,13 @@ public class WriteEventsTests : EventSourcingDbTests
             Data: secondData
         );
 
-        _ = await client.WriteEventsAsync([firstEvent]);
+        await client.WriteEventsAsync([firstEvent], token: TestContext.Current.CancellationToken);
 
         var error = await Assert.ThrowsAsync<HttpRequestException>(async () =>
             await client.WriteEventsAsync(
                 [secondEvent],
-                [Precondition.IsSubjectOnEventIdPrecondition("/test", "1")]
+                [Precondition.IsSubjectOnEventIdPrecondition("/test", "1")],
+                TestContext.Current.CancellationToken
             )
         );
 
@@ -194,12 +197,13 @@ public class WriteEventsTests : EventSourcingDbTests
             Data: secondData
         );
 
-        _ = await client.WriteEventsAsync([firstEvent]);
+        await client.WriteEventsAsync([firstEvent], token: TestContext.Current.CancellationToken);
 
         var error = await Assert.ThrowsAsync<HttpRequestException>(async () =>
             await client.WriteEventsAsync(
                 [secondEvent],
-                [Precondition.IsEventQlQueryTruePrecondition("FROM e IN events PROJECT INTO COUNT() == 0")]
+                [Precondition.IsEventQlQueryTruePrecondition("FROM e IN events PROJECT INTO COUNT() == 0")],
+                TestContext.Current.CancellationToken
             )
         );
 
@@ -218,7 +222,7 @@ public class WriteEventsTests : EventSourcingDbTests
             Data: new EventData(42)
         );
 
-        var writtenEvents = await client.WriteEventsAsync([eventCandidate]);
+        var writtenEvents = await client.WriteEventsAsync([eventCandidate], token: TestContext.Current.CancellationToken);
 
         var data = writtenEvents[0].GetData(typeof(EventData));
 
@@ -240,7 +244,7 @@ public class WriteEventsTests : EventSourcingDbTests
             Data: new EventData(42)
         );
 
-        var writeEvents = async () => await client.WriteEventsAsync([eventCandidate]);
+        var writeEvents = () => client.WriteEventsAsync([eventCandidate], token: TestContext.Current.CancellationToken);
 
         var ex = await Assert.ThrowsAsync<HttpRequestException>(writeEvents);
 

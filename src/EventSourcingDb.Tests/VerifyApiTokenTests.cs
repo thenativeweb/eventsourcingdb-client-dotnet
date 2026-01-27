@@ -12,7 +12,7 @@ public class VerifyApiTokenTests : EventSourcingDbTests
         var client = Container!.GetClient();
 
         // Should not throw.
-        await client.VerifyApiTokenAsync();
+        await client.VerifyApiTokenAsync(TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -25,7 +25,7 @@ public class VerifyApiTokenTests : EventSourcingDbTests
 
         await Assert.ThrowsAsync<HttpRequestException>(async () =>
         {
-            await client.VerifyApiTokenAsync();
+            await client.VerifyApiTokenAsync(TestContext.Current.CancellationToken);
         });
     }
 }

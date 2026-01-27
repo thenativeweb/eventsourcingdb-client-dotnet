@@ -2,7 +2,6 @@ using System;
 using System.Linq;
 using System.Reflection;
 using System.Security.Cryptography;
-using System.Text;
 using System.Threading.Tasks;
 using EventSourcingDb.Types;
 using Xunit;
@@ -23,7 +22,7 @@ public class VerifyHashTests : EventSourcingDbTests
             Data: new EventData(42)
         );
 
-        var writtenEvents = await client.WriteEventsAsync([eventCandidate]);
+        var writtenEvents = await client.WriteEventsAsync([eventCandidate], token: TestContext.Current.CancellationToken);
 
         var @event = writtenEvents.Single();
         @event.VerifyHash();
@@ -41,7 +40,7 @@ public class VerifyHashTests : EventSourcingDbTests
             Data: new EventData(42)
         );
 
-        var writtenEvents = await client.WriteEventsAsync([eventCandidate]);
+        var writtenEvents = await client.WriteEventsAsync([eventCandidate], token: TestContext.Current.CancellationToken);
 
         var @event = writtenEvents.Single();
 

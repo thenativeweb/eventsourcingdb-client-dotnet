@@ -16,7 +16,7 @@ public class ReadEventTypeTest : EventSourcingDbTests
 
         try
         {
-            await client.ReadEventTypeAsync("io.eventsourcingdb.nonexistent");
+            await client.ReadEventTypeAsync("io.eventsourcingdb.nonexistent", TestContext.Current.CancellationToken);
         }
         catch (HttpRequestException ex)
         {
@@ -36,7 +36,7 @@ public class ReadEventTypeTest : EventSourcingDbTests
 
         try
         {
-            await client.ReadEventTypeAsync("io.eventsourcingdb.malformed.");
+            await client.ReadEventTypeAsync("io.eventsourcingdb.malformed.", TestContext.Current.CancellationToken);
         }
         catch (HttpRequestException ex)
         {
@@ -63,9 +63,9 @@ public class ReadEventTypeTest : EventSourcingDbTests
             Data: firstData
         );
 
-        await client.WriteEventsAsync([firstEvent]);
+        await client.WriteEventsAsync([firstEvent], token: TestContext.Current.CancellationToken);
 
-        var eventType = await client.ReadEventTypeAsync("io.eventsourcingdb.test");
+        var eventType = await client.ReadEventTypeAsync("io.eventsourcingdb.test", TestContext.Current.CancellationToken);
         Assert.Equal("io.eventsourcingdb.test", eventType.Type);
         Assert.False(eventType.IsPhantom);
         Assert.Null(eventType.Schema);

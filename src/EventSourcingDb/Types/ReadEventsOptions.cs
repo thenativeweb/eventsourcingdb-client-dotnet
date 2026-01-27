@@ -1,5 +1,3 @@
-using System.Threading;
-
 namespace EventSourcingDb.Types;
 
 public record ReadEventsOptions(

@@ -16,7 +16,7 @@ public sealed class StreamLineReaderTests
         await using var stream = CreateStream("Hello, World!\n");
         await using var reader = new StreamLineReader(stream);
 
-        var line = await reader.ReadLineAsync();
+        var line = await reader.ReadLineAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal("Hello, World!", line);
     }
@@ -27,10 +27,10 @@ public sealed class StreamLineReaderTests
         await using var stream = CreateStream("Line 1\nLine 2\nLine 3\n");
         await using var reader = new StreamLineReader(stream);
 
-        var line1 = await reader.ReadLineAsync();
-        var line2 = await reader.ReadLineAsync();
-        var line3 = await reader.ReadLineAsync();
-        var line4 = await reader.ReadLineAsync();
+        var line1 = await reader.ReadLineAsync(TestContext.Current.CancellationToken);
+        var line2 = await reader.ReadLineAsync(TestContext.Current.CancellationToken);
+        var line3 = await reader.ReadLineAsync(TestContext.Current.CancellationToken);
+        var line4 = await reader.ReadLineAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal("Line 1", line1);
         Assert.Equal("Line 2", line2);
@@ -44,7 +44,7 @@ public sealed class StreamLineReaderTests
         await using var stream = CreateStream("Line with CRLF\r\n");
         await using var reader = new StreamLineReader(stream);
 
-        var line = await reader.ReadLineAsync();
+        var line = await reader.ReadLineAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal("Line with CRLF", line);
     }
@@ -55,8 +55,8 @@ public sealed class StreamLineReaderTests
         await using var stream = CreateStream("Last line without newline");
         await using var reader = new StreamLineReader(stream);
 
-        var line = await reader.ReadLineAsync();
-        var nullLine = await reader.ReadLineAsync();
+        var line = await reader.ReadLineAsync(TestContext.Current.CancellationToken);
+        var nullLine = await reader.ReadLineAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal("Last line without newline", line);
         Assert.Null(nullLine);
@@ -68,7 +68,7 @@ public sealed class StreamLineReaderTests
         await using var stream = CreateStream("");
         await using var reader = new StreamLineReader(stream);
 
-        var line = await reader.ReadLineAsync();
+        var line = await reader.ReadLineAsync(TestContext.Current.CancellationToken);
 
         Assert.Null(line);
     }
@@ -79,8 +79,8 @@ public sealed class StreamLineReaderTests
         await using var stream = CreateStream("\n");
         await using var reader = new StreamLineReader(stream);
 
-        var line = await reader.ReadLineAsync();
-        var nullLine = await reader.ReadLineAsync();
+        var line = await reader.ReadLineAsync(TestContext.Current.CancellationToken);
+        var nullLine = await reader.ReadLineAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal("", line);
         Assert.Null(nullLine);
@@ -92,7 +92,7 @@ public sealed class StreamLineReaderTests
         await using var stream = CreateStream("Äöü ñ 中文 🎉\n");
         await using var reader = new StreamLineReader(stream);
 
-        var line = await reader.ReadLineAsync();
+        var line = await reader.ReadLineAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal("Äöü ñ 中文 🎉", line);
     }
@@ -104,7 +104,7 @@ public sealed class StreamLineReaderTests
         await using var stream = CreateStream(json);
         await using var reader = new StreamLineReader(stream);
 
-        var line = await reader.ReadLineAsync();
+        var line = await reader.ReadLineAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal("{\"type\":\"event\",\"payload\":{\"id\":123}}", line);
     }
@@ -130,9 +130,9 @@ public sealed class StreamLineReaderTests
         await using var stream = CreateStream("Only line\n");
         await using var reader = new StreamLineReader(stream);
 
-        var line1 = await reader.ReadLineAsync();
-        var line2 = await reader.ReadLineAsync();
-        var line3 = await reader.ReadLineAsync();
+        var line1 = await reader.ReadLineAsync(TestContext.Current.CancellationToken);
+        var line2 = await reader.ReadLineAsync(TestContext.Current.CancellationToken);
+        var line3 = await reader.ReadLineAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal("Only line", line1);
         Assert.Null(line2);
@@ -146,7 +146,7 @@ public sealed class StreamLineReaderTests
         await using var stream = CreateStream(longContent + "\n");
         await using var reader = new StreamLineReader(stream);
 
-        var line = await reader.ReadLineAsync();
+        var line = await reader.ReadLineAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(longContent, line);
     }
@@ -157,9 +157,9 @@ public sealed class StreamLineReaderTests
         await using var stream = CreateStream("Line1\nLine2\r\nLine3\n");
         await using var reader = new StreamLineReader(stream);
 
-        var line1 = await reader.ReadLineAsync();
-        var line2 = await reader.ReadLineAsync();
-        var line3 = await reader.ReadLineAsync();
+        var line1 = await reader.ReadLineAsync(TestContext.Current.CancellationToken);
+        var line2 = await reader.ReadLineAsync(TestContext.Current.CancellationToken);
+        var line3 = await reader.ReadLineAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal("Line1", line1);
         Assert.Equal("Line2", line2);

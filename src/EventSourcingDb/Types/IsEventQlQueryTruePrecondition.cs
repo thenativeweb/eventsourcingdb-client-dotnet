@@ -1,3 +1,3 @@
 namespace EventSourcingDb.Types;
 
-public record IsEventQlQueryTruePrecondition(string Query);
+internal record IsEventQlQueryTruePrecondition(string Query);

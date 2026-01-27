@@ -1,8 +1,6 @@
 using System;
 using System.Linq;
 using System.Net.Http;
-using System.Net.Http.Headers;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
@@ -17,7 +15,9 @@ public class ReadEventTypesTest : EventSourcingDbTests
     public async Task ReadsNoEventTypesIfTheDatabaseIsEmpty()
     {
         var client = Container!.GetClient();
-        var eventTypesRead = await client.ReadEventTypesAsync().ToListAsync();
+        var eventTypesRead = await client
+            .ReadEventTypesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Empty(eventTypesRead);
     }
@@ -43,9 +43,11 @@ public class ReadEventTypesTest : EventSourcingDbTests
             Data: secondData
         );
 
-        await client.WriteEventsAsync([firstEvent, secondEvent]);
+        await client.WriteEventsAsync([firstEvent, secondEvent], token: TestContext.Current.CancellationToken);
 
-        var eventTypesRead = await client.ReadEventTypesAsync().ToListAsync();
+        var eventTypesRead = await client
+            .ReadEventTypesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, eventTypesRead.Count);
         Assert.Equal(eventTypesRead[0], new EventType(
@@ -65,46 +67,35 @@ public class ReadEventTypesTest : EventSourcingDbTests
     {
         var client = Container!.GetClient();
 
-        // TODO: simplify this once schema registration is supported by the client.
-        var registerEventSchemaUrl = new Uri(Container.GetBaseUrl(), "/api/v1/register-event-schema");
-        var eventSchema = new
-        {
-            Type = "object",
-            Properties = new { value = new { type = "integer" } },
-            Required = new[] { "value" }
-        };
-
-        using var request = new HttpRequestMessage(HttpMethod.Post, registerEventSchemaUrl);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Container.GetApiToken());
-        request.Content = new StringContent(
-            JsonSerializer.Serialize(new
+        const string schemaJson =
+            """
             {
-                eventType = "io.eventsourcingdb.v1.test",
-                schema = eventSchema
-            }, _defaultSerializerOptions),
-            Encoding.UTF8,
-            "application/json"
-        );
-        using var response = await _httpClient.SendAsync(request);
-        response.EnsureSuccessStatusCode();
+                "type": "object",
+                "properties": {
+                    "value": {
+                        "type": "number"
+                    }
+                },
+                "required": [
+                    "value"
+                ]
+            }
+            """;
+        var schema = JsonDocument.Parse(schemaJson).RootElement;
+        const string eventType = "io.eventsourcingdb.v1.test";
+        await client.RegisterEventSchemaAsync(eventType, schema, TestContext.Current.CancellationToken);
 
-        var eventTypesRead = await client.ReadEventTypesAsync().ToListAsync();
+        var eventTypesRead = await client
+            .ReadEventTypesAsync(TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Single(eventTypesRead);
-        Assert.Collection(eventTypesRead, eventType =>
+        Assert.Collection(eventTypesRead, type =>
         {
-            Assert.Equal("io.eventsourcingdb.v1.test", eventType.Type);
-            Assert.True(eventType.IsPhantom);
-            Assert.NotNull(eventType.Schema);
-
-            var schema = eventType.Schema.Value;
-            Assert.Equal(JsonValueKind.Object, schema.ValueKind);
-            Assert.Equal("object", schema.GetProperty("type").GetString());
-            Assert.Equal("integer", schema.GetProperty("properties").GetProperty("value").GetProperty("type").GetString());
-            Assert.True(schema.TryGetProperty("required", out var required));
-            Assert.Equal(JsonValueKind.Array, required.ValueKind);
-            Assert.Equal(1, required.GetArrayLength());
-            Assert.Equal("value", required[0].GetString());
+            Assert.Equal(eventType, type.Type);
+            Assert.True(type.IsPhantom);
+            Assert.NotNull(type.Schema);
+            Assert.True(JsonElementComparer.Equals(type.Schema.Value, schema));
         });
     }
 

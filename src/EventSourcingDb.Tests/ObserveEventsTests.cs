@@ -4,7 +4,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using EventSourcingDb.Types;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace EventSourcingDb.Tests;
 
@@ -55,7 +54,7 @@ public class ObserveEventsTests(ITestOutputHelper testOutputHelper) : EventSourc
             Data: secondData
         );
 
-        await client.WriteEventsAsync([firstEvent, secondEvent]);
+        await client.WriteEventsAsync([firstEvent, secondEvent], token: TestContext.Current.CancellationToken);
 
         var observedEvents = new List<Event>();
         var options = new ObserveEventsOptions(Recursive: true);
@@ -97,7 +96,7 @@ public class ObserveEventsTests(ITestOutputHelper testOutputHelper) : EventSourc
             Data: secondData
         );
 
-        await client.WriteEventsAsync([firstEvent, secondEvent]);
+        await client.WriteEventsAsync([firstEvent, secondEvent], token: TestContext.Current.CancellationToken);
 
         var observedEvents = new List<Event>();
         var options = new ObserveEventsOptions(Recursive: true, LowerBound: new Bound("1", BoundType.Inclusive));
@@ -146,7 +145,7 @@ public class ObserveEventsTests(ITestOutputHelper testOutputHelper) : EventSourc
             Data: secondData
         );
 
-        await client.WriteEventsAsync([firstEvent, secondEvent]);
+        await client.WriteEventsAsync([firstEvent, secondEvent], token: TestContext.Current.CancellationToken);
 
         var observedEvents = new List<Event>();
         var options = new ObserveEventsOptions(

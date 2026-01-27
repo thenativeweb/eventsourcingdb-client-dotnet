@@ -1,3 +1,3 @@
 namespace EventSourcingDb.Types;
 
-public record IsSubjectPopulatedPrecondition(string Subject);
+internal record IsSubjectPopulatedPrecondition(string Subject);
