@@ -19,9 +19,17 @@ jobs:
     steps:
       - name: Clone repository
         uses: actions/checkout@v6
-      - name: Use .NET ${{ matrix.dotnet-version }}
+      - name: Use .NET 8.0
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: ${{ matrix.dotnet-version }}
+          dotnet-version: '8.0.x'
+      - name: Use .NET 9.0
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '9.0.x'
+      - name: Use .NET 10.0
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
       - name: Run QA
         run: make qa
