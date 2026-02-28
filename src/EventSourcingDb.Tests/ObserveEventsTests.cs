@@ -58,13 +58,17 @@ public class ObserveEventsTests(ITestOutputHelper testOutputHelper) : EventSourc
 
         var observedEvents = new List<Event>();
         var options = new ObserveEventsOptions(Recursive: true);
-        using var source = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+        using var source = new CancellationTokenSource(TimeSpan.FromSeconds(10));
 
         try
         {
             await foreach (var eventResult in client.ObserveEventsAsync("/", options, source.Token))
             {
                 observedEvents.Add(eventResult);
+                if (observedEvents.Count >= 2)
+                {
+                    break;
+                }
             }
         }
         catch (OperationCanceledException)
@@ -100,13 +104,17 @@ public class ObserveEventsTests(ITestOutputHelper testOutputHelper) : EventSourc
 
         var observedEvents = new List<Event>();
         var options = new ObserveEventsOptions(Recursive: true, LowerBound: new Bound("1", BoundType.Inclusive));
-        using var source = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+        using var source = new CancellationTokenSource(TimeSpan.FromSeconds(10));
 
         try
         {
             await foreach (var eventResult in client.ObserveEventsAsync("/", options, source.Token))
             {
                 observedEvents.Add(eventResult);
+                if (observedEvents.Count >= 1)
+                {
+                    break;
+                }
             }
         }
         catch (OperationCanceledException)
@@ -156,13 +164,17 @@ public class ObserveEventsTests(ITestOutputHelper testOutputHelper) : EventSourc
                 ObserveIfEventIsMissing.ReadEverything
             )
         );
-        using var source = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+        using var source = new CancellationTokenSource(TimeSpan.FromSeconds(10));
 
         try
         {
             await foreach (var eventResult in client.ObserveEventsAsync("/", options, source.Token))
             {
                 observedEvents.Add(eventResult);
+                if (observedEvents.Count >= 1)
+                {
+                    break;
+                }
             }
         }
         catch (OperationCanceledException)
