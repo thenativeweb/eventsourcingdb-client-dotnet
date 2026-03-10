@@ -8,18 +8,22 @@ endif
 LIBRARY := src/EventSourcingDb/EventSourcingDb.csproj
 TESTS := src/EventSourcingDb.Tests/EventSourcingDb.Tests.csproj
 
-qa: analyze test
+qa: restore analyze test
+
+restore:
+	@dotnet restore $(LIBRARY)
+	@dotnet restore $(TESTS)
 
 analyze:
-	@dotnet format $(LIBRARY) --verify-no-changes
-	@dotnet format $(TESTS) --verify-no-changes
+	@dotnet format $(LIBRARY) --no-restore --verify-no-changes
+	@dotnet format $(TESTS) --no-restore --verify-no-changes
 
 test:
 	@dotnet test $(TESTS) --verbosity normal
 
-format:
-	@dotnet format $(LIBRARY)
-	@dotnet format $(TESTS)
+format: restore
+	@dotnet format $(LIBRARY) --no-restore
+	@dotnet format $(TESTS) --no-restore
 
 clean:
 	@dotnet clean $(LIBRARY)
@@ -37,4 +41,5 @@ build: clean
 		clean \
 		format \
 		qa \
+		restore \
 		test
