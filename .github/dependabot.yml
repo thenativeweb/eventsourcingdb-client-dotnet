@@ -8,14 +8,20 @@ updates:
       interval: weekly
     open-pull-requests-limit: 10
     assignees:
-      - thenativeweb/internal_dev
+      - goloroden
     labels:
       - Dependencies
     allow:
       - dependency-type: direct
     commit-message:
-      prefix: "chore: "
-      prefix-development: "chore: "
+      prefix: fix
+    groups:
+      nuget:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
 
   - package-ecosystem: nuget
     directory: "/src/EventSourcingDb.Tests"
@@ -25,39 +31,59 @@ updates:
       interval: weekly
     open-pull-requests-limit: 10
     assignees:
-      - thenativeweb/internal_dev
+      - goloroden
     labels:
       - Dependencies
     allow:
       - dependency-type: direct
     commit-message:
-      prefix: "chore: "
-      prefix-development: "chore: "
+      prefix: chore
+    groups:
+      nuget:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
 
-  - package-ecosystem: "docker"
+  - package-ecosystem: docker
     directory: "/docker"
     cooldown:
       default-days: 7
     schedule:
-      interval: "weekly"
+      interval: weekly
     open-pull-requests-limit: 10
     assignees:
-      - thenativeweb/internal_dev
+      - goloroden
     labels:
       - Dependencies
     commit-message:
       prefix: chore
+    groups:
+      docker:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
 
-  - package-ecosystem: "github-actions"
+  - package-ecosystem: github-actions
     directory: "/"
     cooldown:
       default-days: 7
     schedule:
-      interval: "weekly"
+      interval: weekly
     open-pull-requests-limit: 10
     assignees:
-      - thenativeweb/internal_dev
+      - goloroden
     labels:
       - Dependencies
     commit-message:
       prefix: chore
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
