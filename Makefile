@@ -19,7 +19,7 @@ analyze:
 	@dotnet format $(TESTS) --no-restore --verify-no-changes
 
 test:
-	@dotnet test $(TESTS) --verbosity normal
+	@dotnet test --project $(TESTS)
 
 format: restore
 	@dotnet format $(LIBRARY) --no-restore
