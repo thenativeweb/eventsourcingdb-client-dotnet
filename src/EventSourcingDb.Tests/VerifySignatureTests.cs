@@ -105,6 +105,35 @@ public class VerifySignatureTests : IAsyncDisposable
         @event.VerifySignature(_container!.GetVerificationKey());
     }
 
+    [Fact]
+    public async Task GetSigningKeyReturnsTheKeyTheVerificationKeyBelongsTo()
+    {
+        var imageVersion = DockerfileHelper.GetImageVersionFromDockerfile();
+
+        _container = new Container()
+            .WithImageTag(imageVersion)
+            .WithSigningKey();
+
+        await _container.StartAsync(TestContext.Current.CancellationToken);
+
+        using var signingKey = Key.Import(SignatureAlgorithm.Ed25519, _container.GetSigningKey(), KeyBlobFormat.PkixPrivateKey);
+
+        Assert.Equal(_container.GetVerificationKey(), signingKey.PublicKey.Export(KeyBlobFormat.PkixPublicKey));
+    }
+
+    [Fact]
+    public async Task GetSigningKeyThrowsWithoutASigningKey()
+    {
+        var imageVersion = DockerfileHelper.GetImageVersionFromDockerfile();
+
+        _container = new Container()
+            .WithImageTag(imageVersion);
+
+        await _container.StartAsync(TestContext.Current.CancellationToken);
+
+        Assert.Throws<InvalidOperationException>(() => _container.GetSigningKey());
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_container is not null)
