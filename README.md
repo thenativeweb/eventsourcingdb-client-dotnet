@@ -564,14 +564,13 @@ var container = new Container()
     .WithSigningKey();
 ```
 
-You can retrieve the private key (for signing) and the public key (for verifying signatures) once the container has been started:
+You can retrieve the public key (for verifying signatures) once the container has been started. If the container was started without a signing key, `GetVerificationKey` throws an `InvalidOperationException`:
 
 ```csharp
-var signingKey = container.GetSigningKey();
 var verificationKey = container.GetVerificationKey();
 ```
 
-The `signingKey` can be used when configuring the container to sign outgoing events. The `verificationKey` can be passed to `VerifySignature` when verifying events read from the database.
+The `verificationKey` can be passed to `VerifySignature` when verifying events read from the database.
 
 ### Using a Custom HttpClient with Testcontainers
 
