@@ -564,13 +564,14 @@ var container = new Container()
     .WithSigningKey();
 ```
 
-You can retrieve the public key (for verifying signatures) once the container has been started. If the container was started without a signing key, `GetVerificationKey` throws an `InvalidOperationException`:
+You can retrieve the private key (for signing) and the public key (for verifying signatures) once the container has been started. If the container was started without a signing key, both methods throw an `InvalidOperationException`:
 
 ```csharp
+var signingKey = container.GetSigningKey();
 var verificationKey = container.GetVerificationKey();
 ```
 
-The `verificationKey` can be passed to `VerifySignature` when verifying events read from the database.
+The `signingKey` is the private key EventSourcingDB signs events with, in the PKCS#8 format. The `verificationKey` can be passed to `VerifySignature` when verifying events read from the database.
 
 ### Using a Custom HttpClient with Testcontainers
 

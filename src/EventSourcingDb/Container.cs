@@ -141,6 +141,16 @@ public class Container
         return new Client(httpClient, dataSerializerOptions, logger);
     }
 
+    public byte[] GetSigningKey()
+    {
+        if (_key is null)
+        {
+            throw new InvalidOperationException("Signing key is not set.");
+        }
+
+        return _key.Export(KeyBlobFormat.PkixPrivateKey);
+    }
+
     public byte[] GetVerificationKey()
     {
         if (_key is null)
