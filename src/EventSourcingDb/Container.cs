@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
@@ -54,7 +55,8 @@ public class Container
             "--api-token", _apiToken,
             "--data-directory-temporary",
             "--http-enabled",
-            "--https-enabled=false"
+            "--https-enabled=false",
+            "--http-port", _internalPort.ToString(CultureInfo.InvariantCulture)
         ];
 
         var builder = new ContainerBuilder($"{ImageName}:{_imageTag}")
