@@ -331,6 +331,8 @@ await foreach (var row in client.RunEventQlQueryAsync<Event>(
 
 Each row is deserialized automatically and returned as `TRow`, according to your projection. Ensure your projection matches the shape of `TRow`.
 
+EventSourcingDB sends a heartbeat every second while there are no rows to send. If neither a row nor a heartbeat arrives for 30 seconds, the connection has stalled, and the stream will terminate with a `HeartbeatTimeoutException`.
+
 *Optionally, you might provide a `CancellationToken`.*
 
 ## Observing Events
@@ -349,6 +351,8 @@ await foreach (var @event in client.ObserveEventsAsync(
 ```
 
 If an error occurs, the stream will terminate with an exception.
+
+EventSourcingDB sends a heartbeat every second while there are no new events. If neither an event nor a heartbeat arrives for 30 seconds, the connection has stalled, and the stream will terminate with a `HeartbeatTimeoutException`.
 
 *Optionally, you might provide a `CancellationToken`.*
 

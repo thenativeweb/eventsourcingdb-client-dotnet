@@ -36,6 +36,10 @@ public class Client : IClient
     private readonly HttpClient _httpClient;
     private readonly ILogger<Client> _logger;
 
+    // EventSourcingDB sends a heartbeat every second while there is nothing else to send, so a stream
+    // that stays silent for this long has stalled. Only tests set a different value.
+    internal TimeSpan HeartbeatTimeout { get; init; } = TimeSpan.FromSeconds(30);
+
     public Client(Uri baseUrl, string apiToken) : this(CreateHttpClient(baseUrl, apiToken), null, null)
     {
     }
@@ -321,7 +325,7 @@ public class Client : IClient
 
         while (true)
         {
-            var eventLine = await lineReader.ReadLineAsync(token).ConfigureAwait(false);
+            var eventLine = await ReadLineWithinHeartbeatTimeoutAsync(lineReader, token).ConfigureAwait(false);
 
             if (eventLine is null)
             {
@@ -492,7 +496,7 @@ public class Client : IClient
 
         while (true)
         {
-            var queryLine = await lineReader.ReadLineAsync(token).ConfigureAwait(false);
+            var queryLine = await ReadLineWithinHeartbeatTimeoutAsync(lineReader, token).ConfigureAwait(false);
 
             if (queryLine is null)
             {
@@ -516,6 +520,23 @@ public class Client : IClient
                 default:
                     throw new Exception($"Failed to handle unsupported line type '{line.Type}'.");
             }
+        }
+    }
+
+    private async ValueTask<string?> ReadLineWithinHeartbeatTimeoutAsync(StreamLineReader lineReader, CancellationToken token)
+    {
+        using var heartbeatTimeoutSource = CancellationTokenSource.CreateLinkedTokenSource(token);
+        heartbeatTimeoutSource.CancelAfter(HeartbeatTimeout);
+
+        try
+        {
+            return await lineReader.ReadLineAsync(heartbeatTimeoutSource.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (heartbeatTimeoutSource.IsCancellationRequested && !token.IsCancellationRequested)
+        {
+            throw new HeartbeatTimeoutException(
+                FormattableString.Invariant($"No event and no heartbeat arrived for {HeartbeatTimeout.TotalSeconds} seconds.")
+            );
         }
     }
 
