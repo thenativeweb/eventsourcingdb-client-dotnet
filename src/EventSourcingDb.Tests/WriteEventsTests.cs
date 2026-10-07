@@ -66,6 +66,42 @@ public class WriteEventsTests : EventSourcingDbTests
     }
 
     [Fact]
+    public async Task WritesTheTraceContextOfAnEvent()
+    {
+        var client = Container!.GetClient();
+
+        const string traceParent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01";
+        const string traceState = "rojo=00f067aa0ba902b7";
+
+        var eventCandidate = new EventCandidate(
+            Source: "https://www.eventsourcingdb.io",
+            Subject: "/test",
+            Type: "io.eventsourcingdb.test",
+            Data: new EventData(42),
+            TraceParent: traceParent,
+            TraceState: traceState
+        );
+
+        var writtenEvents = await client.WriteEventsAsync([eventCandidate], token: TestContext.Current.CancellationToken);
+
+        Assert.Collection(writtenEvents, writtenEvent =>
+        {
+            Assert.Equal(traceParent, writtenEvent.TraceParent);
+            Assert.Equal(traceState, writtenEvent.TraceState);
+        });
+
+        var readEvents = await client
+            .ReadEventsAsync("/test", new ReadEventsOptions(Recursive: false), TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Collection(readEvents, readEvent =>
+        {
+            Assert.Equal(traceParent, readEvent.TraceParent);
+            Assert.Equal(traceState, readEvent.TraceState);
+        });
+    }
+
+    [Fact]
     public async Task SupportsTheIsSubjectPristinePrecondition()
     {
         var client = Container!.GetClient();
