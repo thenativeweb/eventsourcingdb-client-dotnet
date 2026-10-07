@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace EventSourcingDb.Types;
 
 public record EventCandidate(
@@ -5,6 +7,6 @@ public record EventCandidate(
     string Subject,
     string Type,
     object Data,
-    string? TraceParent = null,
-    string? TraceState = null
+    [property: JsonPropertyName("traceparent")] string? TraceParent = null,
+    [property: JsonPropertyName("tracestate")] string? TraceState = null
 );
