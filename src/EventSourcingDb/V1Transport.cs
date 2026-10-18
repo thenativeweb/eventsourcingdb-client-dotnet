@@ -97,7 +97,7 @@ internal sealed class V1Transport(ServerConnection connection) : IClient
 
             // The body is built before the request is sent, so that a failure to build it is no
             // failure of the write, which is certainly not stored then.
-            using var content = ServerConnection.CreateJsonContent(new { events = candidatesWithSerializedData, preconditions });
+            using var content = ServerConnection.CreateWriteContent(new { events = candidatesWithSerializedData, preconditions });
 
             var result = await WriteOutcome.GuardAsync(async () =>
             {
@@ -119,7 +119,7 @@ internal sealed class V1Transport(ServerConnection connection) : IClient
                 return eventsResponse
                     .Select(cloudEvent => new Event(cloudEvent, DataSerializerOptions))
                     .ToArray();
-            }, IsRefusal, token).ConfigureAwait(false);
+            }, content, IsRefusal, token).ConfigureAwait(false);
 
             Logger.LogTrace("Written '{Count}' events using url '{Url}' successfully.", result.Length, writeEventsUrl);
 
@@ -301,7 +301,7 @@ internal sealed class V1Transport(ServerConnection connection) : IClient
 
         // The body is built before the request is sent, so that a failure to build it is no
         // failure of the write, which is certainly not stored then.
-        using var content = ServerConnection.CreateJsonContent(new { eventType, schema });
+        using var content = ServerConnection.CreateWriteContent(new { eventType, schema });
 
         await WriteOutcome.GuardAsync(async () =>
         {
@@ -312,7 +312,7 @@ internal sealed class V1Transport(ServerConnection connection) : IClient
             await ThrowIfNotOkAsync(response, V1Request.RegisterEventSchema, token).ConfigureAwait(false);
 
             return true;
-        }, IsRefusal, token).ConfigureAwait(false);
+        }, content, IsRefusal, token).ConfigureAwait(false);
     }
 
     public async IAsyncEnumerable<TRow?> RunEventQlQueryAsync<TRow>(

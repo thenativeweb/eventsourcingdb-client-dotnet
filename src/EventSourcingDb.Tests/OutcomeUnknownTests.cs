@@ -95,16 +95,19 @@ public sealed class OutcomeUnknownTests
         ]
     );
 
-    public static TheoryData<string, string, HttpRequestError> ConnectionErrors => Cross(
+    public static TheoryData<string, string, HttpRequestError> ErrorsOfTheHttpClient => Cross(
         _apiVersions,
         TestRequests.Writes,
-        [HttpRequestError.NameResolutionError, HttpRequestError.ConnectionError, HttpRequestError.SecureConnectionError]
-    );
-
-    public static TheoryData<string, string, HttpRequestError> ErrorsAfterConnecting => Cross(
-        _apiVersions,
-        TestRequests.Writes,
-        [HttpRequestError.ResponseEnded, HttpRequestError.InvalidResponse, HttpRequestError.HttpProtocolError, HttpRequestError.ProxyTunnelError, HttpRequestError.Unknown]
+        [
+            HttpRequestError.NameResolutionError,
+            HttpRequestError.ConnectionError,
+            HttpRequestError.SecureConnectionError,
+            HttpRequestError.ProxyTunnelError,
+            HttpRequestError.ResponseEnded,
+            HttpRequestError.InvalidResponse,
+            HttpRequestError.HttpProtocolError,
+            HttpRequestError.Unknown,
+        ]
     );
 
     [Theory]
@@ -211,21 +214,40 @@ public sealed class OutcomeUnknownTests
     }
 
     [Theory]
-    [MemberData(nameof(ConnectionErrors))]
-    public async Task ReportsAWriteWhoseConnectionCannotBeEstablishedAsNotStored(string apiVersion, string request, HttpRequestError error)
+    [MemberData(nameof(ErrorsOfTheHttpClient))]
+    public async Task ReportsAWriteThatFailsBeforeItsRequestIsSentAsNotStored(string apiVersion, string request, HttpRequestError error)
     {
-        var server = FakeServer.ForApi(apiVersion, _ => throw new HttpRequestException(error, "failed to connect"));
+        // The handler fails without sending anything of the request, as when the connection
+        // cannot be established.
+        var failure = new HttpRequestException(error, "failed before sending");
+        var client = UnsentRequestHandler.CreateClient(apiVersion, () => failure);
 
-        var exception = await RunAsync(server, request);
+        var exception = await RunAsync(client, request);
 
-        Assert.Equal(error, Assert.IsType<HttpRequestException>(exception).HttpRequestError);
+        Assert.Same(failure, exception);
     }
 
     [Theory]
-    [MemberData(nameof(ErrorsAfterConnecting))]
-    public async Task ReportsAWriteThatFailsAfterConnectingAsOfUnknownOutcome(string apiVersion, string request, HttpRequestError error)
+    [MemberData(nameof(Writes))]
+    public async Task ReportsAWriteThatAHandlerRefusesBeforeSendingItAsNotStored(string apiVersion, string request)
     {
-        var server = FakeServer.ForApi(apiVersion, _ => throw new HttpRequestException(error, "failed after connecting"));
+        // Such as a circuit breaker that is open.
+        var failure = new InvalidOperationException("The circuit is open.");
+        var client = UnsentRequestHandler.CreateClient(apiVersion, () => failure);
+
+        var exception = await RunAsync(client, request);
+
+        Assert.Same(failure, exception);
+    }
+
+    [Theory]
+    [MemberData(nameof(ErrorsOfTheHttpClient))]
+    public async Task ReportsAWriteThatFailsAfterItsRequestWasSentAsOfUnknownOutcome(string apiVersion, string request, HttpRequestError error)
+    {
+        // The fake server takes the whole request before it fails. Even an error of connecting
+        // leaves the outcome open then, as when the HttpClient sent the request on a connection
+        // that broke, and failed to connect when it tried again.
+        var server = FakeServer.ForApi(apiVersion, _ => throw new HttpRequestException(error, "failed after sending"));
 
         var exception = await RunAsync(server, request);
 
@@ -345,6 +367,62 @@ public sealed class OutcomeUnknownTests
 
     [Theory]
     [MemberData(nameof(Writes))]
+    public async Task ReportsAWriteThatStallsWhileConnectingAsNotStored(string apiVersion, string request)
+    {
+        // The host no longer answers, as when its packets are dropped.
+        using var connectingHandler = new SocketsHttpHandler
+        {
+            ConnectCallback = async (_, token) =>
+            {
+                await Task.Delay(Timeout.Infinite, token);
+                throw new InvalidOperationException("Never connects.");
+            },
+        };
+        using var httpClient = new HttpClient(new ProbeAnsweringHandler(apiVersion, connectingHandler))
+        {
+            BaseAddress = new Uri("http://127.0.0.1:1"),
+            Timeout = Timeout.InfiniteTimeSpan,
+        };
+        var client = new Client(httpClient, new ClientOptions { StallTimeout = TimeSpan.FromMilliseconds(300) }, null, null);
+
+        var exception = await RunAsync(client, request);
+
+        Assert.IsType<ConnectionStalledException>(exception);
+    }
+
+    [Theory]
+    [MemberData(nameof(Writes))]
+    public async Task ReportsAWriteThatTheCallerCancelsWhileConnectingAsNotStored(string apiVersion, string request)
+    {
+        var connecting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var connectingHandler = new SocketsHttpHandler
+        {
+            ConnectCallback = async (_, token) =>
+            {
+                connecting.TrySetResult();
+                await Task.Delay(Timeout.Infinite, token);
+                throw new InvalidOperationException("Never connects.");
+            },
+        };
+        using var httpClient = new HttpClient(new ProbeAnsweringHandler(apiVersion, connectingHandler))
+        {
+            BaseAddress = new Uri("http://127.0.0.1:1"),
+            Timeout = Timeout.InfiniteTimeSpan,
+        };
+        var client = new Client(httpClient, new ClientOptions { StallTimeout = TimeSpan.FromSeconds(5) }, null, null);
+        using var source = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+
+        var running = TestRequests.RunAsync(client, request, source.Token);
+        await connecting.Task.WaitAsync(_guardTimeout, TestContext.Current.CancellationToken);
+        await source.CancelAsync();
+
+        var exception = await Record.ExceptionAsync(() => running);
+
+        Assert.Equal(source.Token, Assert.IsAssignableFrom<OperationCanceledException>(exception).CancellationToken);
+    }
+
+    [Theory]
+    [MemberData(nameof(Writes))]
     public async Task ReportsAWriteWhoseConnectionIsRefusedAsNotStored(string apiVersion, string request)
     {
         var listener = new TcpListener(IPAddress.Loopback, 0);
@@ -445,5 +523,29 @@ public sealed class OutcomeUnknownTests
         }
 
         return data;
+    }
+}
+
+// Answers the probe as a server that offers the given API does, and fails every other request
+// without sending anything of it, as when the connection cannot be established.
+internal sealed class UnsentRequestHandler(string apiVersion, Func<Exception> fail) : HttpMessageHandler
+{
+    private int _isProbeAnswered;
+
+    public static Client CreateClient(string apiVersion, Func<Exception> fail)
+    {
+        return new Client(new HttpClient(new UnsentRequestHandler(apiVersion, fail)) { BaseAddress = new Uri("http://esdb.test") });
+    }
+
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        if (request.Method == HttpMethod.Get &&
+            request.RequestUri!.AbsolutePath == FakeServer.ProbePath &&
+            Interlocked.Exchange(ref _isProbeAnswered, 1) == 0)
+        {
+            return Task.FromResult(FakeServer.AnswerProbe(apiVersion));
+        }
+
+        throw fail();
     }
 }

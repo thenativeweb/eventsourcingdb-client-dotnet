@@ -1,5 +1,4 @@
 using System;
-using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -7,12 +6,14 @@ namespace EventSourcingDb;
 
 // EventSourcingDB never stops a write halfway, so a write whose answer is lost may have been
 // stored nonetheless. The rule is the same in every official SDK: a write is certainly not
-// stored only if the connection could not be established at all, or if the server explicitly
-// refused it. Every other failure is reported as an OutcomeUnknownException.
+// stored only if the connection could not be established at all, so that nothing of the request
+// was sent, or if the server explicitly refused it. Every other failure is reported as an
+// OutcomeUnknownException.
 internal static class WriteOutcome
 {
     public static async Task<T> GuardAsync<T>(
         Func<Task<T>> write,
+        WriteContent content,
         Func<DbApiException, bool> isRefusal,
         CancellationToken token)
     {
@@ -23,24 +24,23 @@ internal static class WriteOutcome
         {
             return await write().ConfigureAwait(false);
         }
-        catch (Exception exception) when (!IsCertainlyNotStored(exception, isRefusal))
+        catch (Exception exception) when (!IsCertainlyNotStored(exception, content, isRefusal))
         {
             throw new OutcomeUnknownException(exception);
         }
     }
 
-    private static bool IsCertainlyNotStored(Exception exception, Func<DbApiException, bool> isRefusal)
+    private static bool IsCertainlyNotStored(Exception exception, WriteContent content, Func<DbApiException, bool> isRefusal)
     {
-        return exception switch
+        // Until the body is handed on to a connection, nothing of the request was sent, whatever
+        // failed: resolving the host, connecting, TLS, or a stall or a cancellation meanwhile.
+        // Once it was, even an error of connecting leaves the outcome open, since the HttpClient
+        // may have sent the request on a connection that broke before it tried again.
+        if (!content.IsHandedOn)
         {
-            DbApiException dbApiException => isRefusal(dbApiException),
-            HttpRequestException
-            {
-                HttpRequestError: HttpRequestError.NameResolutionError
-                    or HttpRequestError.ConnectionError
-                    or HttpRequestError.SecureConnectionError
-            } => true,
-            _ => false,
-        };
+            return true;
+        }
+
+        return exception is DbApiException dbApiException && isRefusal(dbApiException);
     }
 }

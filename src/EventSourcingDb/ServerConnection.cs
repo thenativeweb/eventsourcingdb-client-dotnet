@@ -39,6 +39,11 @@ internal sealed class ServerConnection(
 
     public ILogger<Client> Logger { get; } = logger;
 
+    public static WriteContent CreateWriteContent(object body)
+    {
+        return new WriteContent(JsonSerializer.SerializeToUtf8Bytes(body, DefaultSerializerOptions));
+    }
+
     public static StringContent CreateJsonContent(object body)
     {
         return new StringContent(

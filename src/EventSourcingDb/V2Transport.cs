@@ -87,7 +87,7 @@ internal sealed class V2Transport(ServerConnection connection) : IClient
 
             // The body is built before the request is sent, so that a failure to build it is no
             // failure of the write, which is certainly not stored then.
-            using var content = ServerConnection.CreateJsonContent(new { events = candidatesWithSerializedData, preconditions });
+            using var content = ServerConnection.CreateWriteContent(new { events = candidatesWithSerializedData, preconditions });
 
             var result = await WriteOutcome.GuardAsync(async () =>
             {
@@ -108,7 +108,7 @@ internal sealed class V2Transport(ServerConnection connection) : IClient
                 }
 
                 return writtenEvents;
-            }, IsRefusal, token).ConfigureAwait(false);
+            }, content, IsRefusal, token).ConfigureAwait(false);
 
             Logger.LogTrace("Written '{Count}' events using url '{Url}' successfully.", result.Count, writeEventsUrl);
 
@@ -263,7 +263,7 @@ internal sealed class V2Transport(ServerConnection connection) : IClient
 
         // The body is built before the request is sent, so that a failure to build it is no
         // failure of the write, which is certainly not stored then.
-        using var content = ServerConnection.CreateJsonContent(new { type = eventType, schema });
+        using var content = ServerConnection.CreateWriteContent(new { type = eventType, schema });
 
         await WriteOutcome.GuardAsync(async () =>
         {
@@ -283,7 +283,7 @@ internal sealed class V2Transport(ServerConnection connection) : IClient
             }
 
             return true;
-        }, IsRefusal, token).ConfigureAwait(false);
+        }, content, IsRefusal, token).ConfigureAwait(false);
     }
 
     public async IAsyncEnumerable<TRow?> RunEventQlQueryAsync<TRow>(

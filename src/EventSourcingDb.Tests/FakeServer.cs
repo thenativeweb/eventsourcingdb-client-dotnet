@@ -101,8 +101,12 @@ internal sealed class FakeServer(Func<FakeRequest, CancellationToken, Task<HttpR
 // Answers the probe of the client as a server that offers the given API does, and passes every
 // other request on to the network, so that a test server over a real connection only sees the
 // requests that follow the probe.
-internal sealed class ProbeAnsweringHandler(string apiVersion) : DelegatingHandler(new SocketsHttpHandler())
+internal sealed class ProbeAnsweringHandler(string apiVersion, HttpMessageHandler innerHandler) : DelegatingHandler(innerHandler)
 {
+    public ProbeAnsweringHandler(string apiVersion) : this(apiVersion, new SocketsHttpHandler())
+    {
+    }
+
     private int _isProbeAnswered;
 
     public static Client CreateClient(string apiVersion, Uri baseUrl, TimeSpan stallTimeout)

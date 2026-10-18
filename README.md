@@ -89,7 +89,7 @@ The client SDK never repeats a request on its own, not even after a status of `4
 
 EventSourcingDB never stops a write halfway, so a write whose response is lost may have been stored nonetheless. If `WriteEventsAsync` or `RegisterEventSchemaAsync` fails in a way that leaves open whether the server stored the write, it fails with an `OutcomeUnknownException`, whose `InnerException` is the cause. This happens, for example, if the connection stalls or breaks after the request was sent, if you cancel the request after it was sent, if the response ends before it is complete, or if the server fails unexpectedly, such as with a status of `500`. Before repeating such a write, find out whether it was stored, for example by reading the events of its subject.
 
-A write is certainly not stored, and fails with the error itself, only if the connection could not be established at all (for example, because the host name could not be resolved, the connection was refused, or TLS failed), or if the server explicitly refused the write, for example because a precondition does not hold:
+A write is certainly not stored, and fails with the error itself, only if the connection could not be established at all, so that nothing of the request was sent (for example, because the host name could not be resolved, the connection was refused, TLS failed, or the request stalled or was cancelled while connecting), or if the server explicitly refused the write, for example because a precondition does not hold:
 
 ```csharp
 try
