@@ -129,7 +129,7 @@ var client = new Client(url, apiToken, new ClientOptions
 });
 ```
 
-When a request stalls, it fails with a `ConnectionStalledException`, whether while waiting for the response or while reading it. Since a stalled write may have been stored nonetheless, `WriteEventsAsync` and `RegisterEventSchemaAsync` wrap it in an [`OutcomeUnknownException`](#knowing-whether-a-write-was-stored).
+When a request stalls, it fails with a `ConnectionStalledException`, whether while connecting, while waiting for the response, or while reading it. A write that stalls after it was sent may have been stored nonetheless, so `WriteEventsAsync` and `RegisterEventSchemaAsync` wrap such a stall in an [`OutcomeUnknownException`](#knowing-whether-a-write-was-stored). A write that stalls while connecting was not sent, so it fails with the `ConnectionStalledException` itself.
 
 `ConnectionStalledException` derives from `TimeoutException`. A `CancellationToken` that you pass to a method can still cancel a request earlier.
 
