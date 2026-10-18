@@ -212,8 +212,10 @@ public class Client : IClient
 
     // Asks the server for the ping of the v2 API. A server that offers it answers with an event
     // in an envelope of the v2 API. A server before EventSourcingDB 1.3 does not know the path,
-    // and answers with 404, or with 405 where its UI serves other methods. Any other answer is no
-    // definitive one, so the probe fails with it.
+    // and answers with 404, or with 405 where its UI serves other methods. Such an answer means
+    // v1 even if it does not come from EventSourcingDB, as from a proxy that passes on only the
+    // paths of the v1 API, since every request to the v1 API checks that its answer does. Any
+    // other answer is no definitive one, so the probe fails with it.
     private async Task<ApiVersion> ProbeAsync()
     {
         var logger = _connection.Logger;
@@ -225,7 +227,10 @@ public class Client : IClient
             using var response = await _connection
                 .SendAsync(request, HttpCompletionOption.ResponseContentRead, CancellationToken.None)
                 .ConfigureAwait(false);
-            response.ThrowIfNotValidServerHeader();
+            if (response.StatusCode is not (HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed))
+            {
+                response.ThrowIfNotValidServerHeader();
+            }
 
             var apiVersion = response.StatusCode switch
             {

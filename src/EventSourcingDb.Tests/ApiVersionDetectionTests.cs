@@ -60,6 +60,26 @@ public sealed class ApiVersionDetectionTests
     }
 
     [Theory]
+    [InlineData(HttpStatusCode.NotFound)]
+    [InlineData(HttpStatusCode.MethodNotAllowed)]
+    public async Task UsesTheV1ApiIfAnAnswerOf404Or405IsNotFromEventSourcingDb(HttpStatusCode status)
+    {
+        // Such as a proxy in front of a server before EventSourcingDB 1.3 that passes on only the
+        // paths of the v1 API, and answers every other one itself. The requests to the v1 API
+        // check that their answers come from EventSourcingDB anyway.
+        var server = new FakeServer(request => FakeServer.IsProbe(request)
+            ? FakeServer.Respond(status, "<html>Not Found</html>", "text/html", isFromEventSourcingDb: false)
+            : FakeServer.Json(HttpStatusCode.OK, V1Ping));
+        var client = server.CreateClient();
+
+        await client.PingAsync(TestContext.Current.CancellationToken);
+        await client.PingAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, server.ProbeCount);
+        Assert.Equal(2, server.Requests.Count(request => request.Path == "/api/v1/ping"));
+    }
+
+    [Theory]
     [InlineData("v1")]
     [InlineData("v2")]
     public async Task ProbesOnlyOnceForEveryRequestOfAClient(string apiVersion)
@@ -168,7 +188,7 @@ public sealed class ApiVersionDetectionTests
         "a status of 503",
         "a status of 429",
         "an answer of 200 that is not from EventSourcingDB",
-        "an answer of 404 that is not from EventSourcingDB",
+        "an answer of 500 that is not from EventSourcingDB",
         "an answer of 200 that is no envelope of the v2 API",
         "an answer of 200 that is no JSON",
         "a network error",
@@ -340,7 +360,7 @@ public sealed class ApiVersionDetectionTests
             "a status of 503" => (() => FakeServer.Text(HttpStatusCode.ServiceUnavailable, "the server is shutting down\n"), typeof(DbApiException)),
             "a status of 429" => (() => FakeServer.Text(HttpStatusCode.TooManyRequests, "too many requests\n"), typeof(DbApiException)),
             "an answer of 200 that is not from EventSourcingDB" => (() => FakeServer.Respond(HttpStatusCode.OK, V2Ping, "application/json", isFromEventSourcingDb: false), typeof(InvalidOperationException)),
-            "an answer of 404 that is not from EventSourcingDB" => (() => FakeServer.Respond(HttpStatusCode.NotFound, "not found", "text/plain", isFromEventSourcingDb: false), typeof(InvalidOperationException)),
+            "an answer of 500 that is not from EventSourcingDB" => (() => FakeServer.Respond(HttpStatusCode.InternalServerError, "bad gateway", "text/plain", isFromEventSourcingDb: false), typeof(InvalidOperationException)),
             "an answer of 200 that is no envelope of the v2 API" => (() => FakeServer.Json(HttpStatusCode.OK, V1Ping), typeof(InvalidValueException)),
             "an answer of 200 that is no JSON" => (() => FakeServer.Text(HttpStatusCode.OK, "<html></html>"), typeof(InvalidValueException)),
             "a network error" => (() => throw new HttpRequestException(HttpRequestError.ConnectionError, "Connection refused"), typeof(HttpRequestException)),
