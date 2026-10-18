@@ -76,7 +76,7 @@ public class VerifySignatureTests : IAsyncDisposable
             .GetField("<Signature>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)?
             .SetValue(@event, tamperedSignature);
 
-        Assert.Throws<Exception>(() => @event.VerifySignature(_container!.GetVerificationKey()));
+        Assert.Throws<SignatureVerificationFailedException>(() => @event.VerifySignature(_container!.GetVerificationKey()));
     }
 
     [Fact]

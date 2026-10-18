@@ -36,6 +36,27 @@ public sealed class VerifyHashFixtureTests
         @event.VerifyHash();
     }
 
+    [Theory]
+    [InlineData("Odyssey", "Odyssee")]
+    [InlineData("/books/42", "/books/43")]
+    [InlineData("2026-10-18T13:46:55.558844542Z", "2026-10-18T13:46:55.558844543Z")]
+    public void ThrowsWhenAHashOfVersion1DoesNotMatch(string original, string tampered)
+    {
+        var @event = ParseEvent(EventWithHashV1.Replace(original, tampered));
+
+        var exception = Assert.Throws<HashVerificationFailedException>(() => @event.VerifyHash());
+        Assert.Equal("Hash verification failed.", exception.Message);
+    }
+
+    [Fact]
+    public void IgnoresTheTraceContextInAHashOfVersion1()
+    {
+        // Version 1 of the hash does not cover traceparent and tracestate.
+        var @event = ParseEvent(EventWithHashV1AndTraceContext.Replace("b7ad6b7169203331", "c7ad6b7169203331"));
+
+        @event.VerifyHash();
+    }
+
     // Parses the event the way the client parses a line of a stream.
     private static Event ParseEvent(string eventJson)
     {

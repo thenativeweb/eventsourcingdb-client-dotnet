@@ -75,7 +75,7 @@ public record Event
 
         if (finalHashHex != Hash)
         {
-            throw new Exception("Hash verification failed.");
+            throw new HashVerificationFailedException("Hash verification failed.");
         }
     }
 
@@ -107,7 +107,7 @@ public record Event
         bool isSignatureValid = algorithm.Verify(publicKey, hashBytes, signatureBytes);
         if (!isSignatureValid)
         {
-            throw new Exception("Signature verification failed.");
+            throw new SignatureVerificationFailedException("Signature verification failed.");
         }
     }
 }

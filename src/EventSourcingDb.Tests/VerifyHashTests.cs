@@ -72,7 +72,7 @@ public class VerifyHashTests : EventSourcingDbTests
             .GetField("<Hash>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)?
             .SetValue(@event, invalidHashHex);
 
-        Assert.Throws<Exception>(() => @event.VerifyHash());
+        Assert.Throws<HashVerificationFailedException>(() => @event.VerifyHash());
     }
 
     private record struct EventData(int Value);

@@ -499,7 +499,7 @@ await foreach (var eventType in client.ReadSubjectsAsync("/books"))
 
 ## Verifying an Event's Hash
 
-To verify the integrity of an event, call the `VerifyHash` method on the event instance. This recomputes the event's hash locally and compares it to the hash stored in the event. If the hashes differ, the function returns an error:
+To verify the integrity of an event, call the `VerifyHash` method on the event instance. This recomputes the event's hash locally and compares it to the hash stored in the event. If the hashes differ, the method throws a `HashVerificationFailedException`:
 
 ```csharp
 event.VerifyHash();
@@ -511,7 +511,7 @@ event.VerifyHash();
 
 To verify the authenticity of an event, call the `VerifySignature` method on the event instance. This requires the public key that matches the private key used for signing on the server.
 
-The function first verifies the event's hash, and then checks the signature. If any verification step fails, it returns an error:
+The method first verifies the event's hash, and then checks the signature. If the hash does not match, it throws a `HashVerificationFailedException`, and if the signature is invalid, a `SignatureVerificationFailedException`. If the event is not signed at all, it throws an `Exception`:
 
 ```csharp
 var verificationKey = // an ed25519 public key
