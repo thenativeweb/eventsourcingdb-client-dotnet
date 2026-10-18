@@ -102,9 +102,9 @@ catch (OutcomeUnknownException)
 }
 ```
 
-A refusal only tells about the attempt that it answers. So if a handler of the `HttpClient` sent a write more than once, or read its body into a buffer, after which the client SDK cannot tell how often it was sent, every failure of the write is an `OutcomeUnknownException`, a refusal included.
+A refusal only tells about the attempt that it answers. The client SDK sees how often a write was sent only through the body that it hands to the `HttpClient`. If a handler sends that body more than once, or reads it into a buffer or as a stream, after which the client SDK cannot count the attempts any more, every failure of the write is an `OutcomeUnknownException`, a refusal included. So a handler that only reads the body, such as one that logs it, turns even a single refusal into an `OutcomeUnknownException`. What the client SDK cannot see is a handler that copies the body once, for example into a `ByteArrayContent` of its own, and sends that copy again: a refusal of such a second attempt is a `DbApiException`, although the first attempt may have been stored.
 
-*Note that a handler that retries requests can store a write twice: the first attempt is stored but its response is lost, and the second attempt succeeds as well. If you use the standard resilience handler of `Microsoft.Extensions.Http.Resilience`, for the EventSourcingDB client or for all clients, as the service defaults of .NET Aspire do, turn off its retries for writes:*
+*Note that a handler that retries requests can store a write twice: the first attempt is stored but its response is lost, and the second attempt succeeds as well. So the protection is not to retry writes at all. If you use the standard resilience handler of `Microsoft.Extensions.Http.Resilience`, for the EventSourcingDB client or for all clients, as the service defaults of .NET Aspire do, turn off its retries for writes:*
 
 ```csharp
 // For the EventSourcingDB client.
