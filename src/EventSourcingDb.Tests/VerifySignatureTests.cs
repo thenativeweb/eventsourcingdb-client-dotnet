@@ -15,10 +15,10 @@ public class VerifySignatureTests : IAsyncDisposable
     [Fact]
     public async Task ThrowsWhenEventIsNotSigned()
     {
-        var imageVersion = DockerfileHelper.GetImageVersionFromDockerfile();
+        var imageTag = DockerfileHelper.GetImageTag();
 
         _container = new Container()
-            .WithImageTag(imageVersion);
+            .WithImageTag(imageTag);
 
         await _container.StartAsync(TestContext.Current.CancellationToken);
 
@@ -49,10 +49,10 @@ public class VerifySignatureTests : IAsyncDisposable
     [Fact]
     public async Task ThrowsWhenSignatureValidationFails()
     {
-        var imageVersion = DockerfileHelper.GetImageVersionFromDockerfile();
+        var imageTag = DockerfileHelper.GetImageTag();
 
         _container = new Container()
-            .WithImageTag(imageVersion)
+            .WithImageTag(imageTag)
             .WithSigningKey();
 
         await _container.StartAsync(TestContext.Current.CancellationToken);
@@ -82,10 +82,10 @@ public class VerifySignatureTests : IAsyncDisposable
     [Fact]
     public async Task VerifySignature()
     {
-        var imageVersion = DockerfileHelper.GetImageVersionFromDockerfile();
+        var imageTag = DockerfileHelper.GetImageTag();
 
         _container = new Container()
-            .WithImageTag(imageVersion)
+            .WithImageTag(imageTag)
             .WithSigningKey();
 
         await _container.StartAsync(TestContext.Current.CancellationToken);
@@ -108,10 +108,10 @@ public class VerifySignatureTests : IAsyncDisposable
     [Fact]
     public async Task GetSigningKeyReturnsTheKeyTheVerificationKeyBelongsTo()
     {
-        var imageVersion = DockerfileHelper.GetImageVersionFromDockerfile();
+        var imageTag = DockerfileHelper.GetImageTag();
 
         _container = new Container()
-            .WithImageTag(imageVersion)
+            .WithImageTag(imageTag)
             .WithSigningKey();
 
         await _container.StartAsync(TestContext.Current.CancellationToken);
@@ -124,10 +124,10 @@ public class VerifySignatureTests : IAsyncDisposable
     [Fact]
     public async Task GetSigningKeyThrowsWithoutASigningKey()
     {
-        var imageVersion = DockerfileHelper.GetImageVersionFromDockerfile();
+        var imageTag = DockerfileHelper.GetImageTag();
 
         _container = new Container()
-            .WithImageTag(imageVersion);
+            .WithImageTag(imageTag);
 
         await _container.StartAsync(TestContext.Current.CancellationToken);
 
