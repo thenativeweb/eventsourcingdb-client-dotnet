@@ -18,7 +18,7 @@ public static class HttpResponseExtensions
         }
     }
 
-    public static async Task ThrowIfNotSuccessStatusCode(
+    internal static async Task ThrowIfNotSuccessStatusCode(
         this HttpResponseMessage response,
         CancellationToken cancellationToken = default
     )

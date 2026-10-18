@@ -782,3 +782,13 @@ Version 2.0 of this client SDK speaks the v2 API of EventSourcingDB as well as t
   ```
 
 - **`ReadEventTypeAsync` and `RegisterEventSchemaAsync` check that the response comes from EventSourcingDB**, as all other methods already did, and otherwise throw an `InvalidOperationException`.
+
+- **`HttpResponseExtensions.ThrowIfNotSuccessStatusCode` is no longer public.** It threw an `HttpRequestException` for any status other than `200`, while the client SDK reports such errors as `DbApiException`s. To check a response of your own, compare its `StatusCode`.
+
+  ```csharp
+  // Before
+  await response.ThrowIfNotSuccessStatusCode();
+
+  // After
+  if (response.StatusCode != HttpStatusCode.OK) { /* ... */ }
+  ```
