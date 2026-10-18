@@ -1,4 +1,4 @@
-using System.Net.Http;
+using System.Net;
 using System.Threading.Tasks;
 using Xunit;
 
@@ -23,9 +23,12 @@ public class VerifyApiTokenTests : EventSourcingDbTests
 
         var client = new Client(url, invalidApiToken);
 
-        await Assert.ThrowsAsync<HttpRequestException>(async () =>
+        var exception = await Assert.ThrowsAsync<DbApiException>(async () =>
         {
             await client.VerifyApiTokenAsync(TestContext.Current.CancellationToken);
         });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, exception.Status);
+        Assert.Null(exception.Code);
     }
 }

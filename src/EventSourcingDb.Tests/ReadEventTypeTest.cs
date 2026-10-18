@@ -1,6 +1,4 @@
-using System;
 using System.Net;
-using System.Net.Http;
 using System.Threading.Tasks;
 using EventSourcingDb.Types;
 using Xunit;
@@ -14,19 +12,13 @@ public class ReadEventTypeTest : EventSourcingDbTests
     {
         var client = Container!.GetClient();
 
-        try
-        {
-            await client.ReadEventTypeAsync("io.eventsourcingdb.nonexistent", TestContext.Current.CancellationToken);
-        }
-        catch (HttpRequestException ex)
-        {
-            Assert.StartsWith("Unexpected status code", ex.Message);
-            Assert.Equal(HttpStatusCode.NotFound, ex.StatusCode);
-        }
-        catch (Exception ex)
-        {
-            Assert.Fail($"Unexpected exception: {ex.Message}");
-        }
+        var exception = await Assert.ThrowsAsync<DbApiException>(() =>
+            client.ReadEventTypeAsync("io.eventsourcingdb.nonexistent", TestContext.Current.CancellationToken)
+        );
+
+        // The v1 API refuses it with 404, the v2 API reports it within its answer.
+        Assert.Equal(ErrorCodes.EventTypeUnknown, exception.Code);
+        Assert.Contains(exception.Status, new[] { HttpStatusCode.NotFound, HttpStatusCode.OK });
     }
 
     [Fact]
@@ -34,18 +26,19 @@ public class ReadEventTypeTest : EventSourcingDbTests
     {
         var client = Container!.GetClient();
 
-        try
+        var exception = await Assert.ThrowsAsync<DbApiException>(() =>
+            client.ReadEventTypeAsync("io.eventsourcingdb.malformed.", TestContext.Current.CancellationToken)
+        );
+
+        // The v1 API refuses it with 400 and no code, the v2 API reports it within its answer.
+        if (exception.Status is HttpStatusCode.OK)
         {
-            await client.ReadEventTypeAsync("io.eventsourcingdb.malformed.", TestContext.Current.CancellationToken);
+            Assert.Equal(ErrorCodes.EventTypeMalformed, exception.Code);
         }
-        catch (HttpRequestException ex)
+        else
         {
-            Assert.StartsWith("Unexpected status code", ex.Message);
-            Assert.Equal(HttpStatusCode.BadRequest, ex.StatusCode);
-        }
-        catch (Exception ex)
-        {
-            Assert.Fail($"Unexpected exception: {ex.Message}");
+            Assert.Equal(HttpStatusCode.BadRequest, exception.Status);
+            Assert.Null(exception.Code);
         }
     }
 
@@ -67,7 +60,7 @@ public class ReadEventTypeTest : EventSourcingDbTests
 
         var eventType = await client.ReadEventTypeAsync("io.eventsourcingdb.test", TestContext.Current.CancellationToken);
         Assert.Equal("io.eventsourcingdb.test", eventType.Type);
-        Assert.False(eventType.IsPhantom);
+        Assert.True(eventType.HasEvents);
         Assert.Null(eventType.Schema);
     }
 

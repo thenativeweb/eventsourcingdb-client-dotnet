@@ -11,18 +11,22 @@ namespace EventSourcingDb.Tests;
 // Stands in for EventSourcingDB. It answers the first request with whatever respond writes, and
 // then keeps the connection open without sending anything else, which is what a stalled
 // connection looks like to the client. If respond writes nothing, not even the response headers
-// arrive.
+// arrive. With closeAfterResponding, it closes the connection instead, which is what a broken
+// connection looks like to the client.
 internal sealed class StallingTestServer : IAsyncDisposable
 {
     private readonly TcpListener _listener;
     private readonly CancellationTokenSource _stopSource = new();
+    private readonly TaskCompletionSource _requestReceived = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource _connectionClosed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly bool _closeAfterResponding;
     private readonly Task _serveTask;
 
-    public StallingTestServer(Func<Func<string, Task>, CancellationToken, Task> respond)
+    public StallingTestServer(Func<Func<string, Task>, CancellationToken, Task> respond, bool closeAfterResponding = false)
     {
         _listener = new TcpListener(IPAddress.Loopback, 0);
         _listener.Start();
+        _closeAfterResponding = closeAfterResponding;
 
         var port = ((IPEndPoint)_listener.LocalEndpoint).Port;
         BaseUrl = new Uri($"http://127.0.0.1:{port}");
@@ -31,6 +35,9 @@ internal sealed class StallingTestServer : IAsyncDisposable
     }
 
     public Uri BaseUrl { get; }
+
+    // Completes once the whole request has arrived, so the client has sent it.
+    public Task RequestReceived => _requestReceived.Task;
 
     // Completes once the client has closed the connection.
     public Task ConnectionClosed => _connectionClosed.Task;
@@ -43,7 +50,15 @@ internal sealed class StallingTestServer : IAsyncDisposable
             await using var stream = tcpClient.GetStream();
 
             await ReadRequestAsync(stream, token);
+            _requestReceived.TrySetResult();
             await respond(text => WriteAsync(stream, text, token), token);
+
+            if (_closeAfterResponding)
+            {
+                tcpClient.Client.Shutdown(SocketShutdown.Both);
+                _connectionClosed.TrySetResult();
+                return;
+            }
 
             // The client sends nothing more, so reading only returns once it closes the connection.
             var buffer = new byte[1];

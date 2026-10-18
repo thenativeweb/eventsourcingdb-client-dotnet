@@ -1,12 +1,9 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
-using System.Net.Mime;
 using System.Runtime.CompilerServices;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
@@ -18,26 +15,20 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace EventSourcingDb;
 
+// The client talks to each server through the API that the server offers: v2 since
+// EventSourcingDB 1.3, and v1 before. Creating it makes no request; the first request of an
+// instance finds out which API the server offers, and every request uses that API from then on.
+// This is the one place that chooses between the two.
 public class Client : IClient
 {
-    private static readonly JsonSerializerOptions _defaultSerializerOptions = new JsonSerializerOptions
-    {
-        PropertyNameCaseInsensitive = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = false,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
-    private readonly JsonSerializerOptions _dataSerializerOptions = new JsonSerializerOptions
-    {
-        PropertyNameCaseInsensitive = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = false,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
+    private const string ProbeUrl = "/api/v2/system/ping";
+
     private static readonly TimeSpan _maxStallTimeout = TimeSpan.FromMilliseconds(uint.MaxValue - 1);
 
-    private readonly HttpClient _httpClient;
-    private readonly ILogger<Client> _logger;
+    private readonly ServerConnection _connection;
+    private readonly ApiVersionDetector _apiVersionDetector;
+    private readonly V1Transport _v1Transport;
+    private readonly V2Transport _v2Transport;
 
     public Client(Uri baseUrl, string apiToken) : this(CreateHttpClient(baseUrl, apiToken), new ClientOptions(), null, null)
     {
@@ -80,80 +71,33 @@ public class Client : IClient
             );
         }
 
-        _httpClient = httpClient;
-        StallTimeout = options.StallTimeout;
-
-        if (dataSerializerOptions is not null)
-        {
-            _dataSerializerOptions = dataSerializerOptions;
-        }
-
-        _logger = logger ?? NullLogger<Client>.Instance;
+        _connection = new ServerConnection(
+            httpClient,
+            options.StallTimeout,
+            dataSerializerOptions ?? CreateDefaultDataSerializerOptions(),
+            logger ?? NullLogger<Client>.Instance
+        );
+        _apiVersionDetector = new ApiVersionDetector(ProbeAsync);
+        _v1Transport = new V1Transport(_connection);
+        _v2Transport = new V2Transport(_connection);
     }
 
     // A request fails once nothing arrives from the server for this long, from sending it until
-    // its end. Everything that arrives starts the time anew, so it does not limit how long a
-    // stream lasts. EventSourcingDB sends a heartbeat every second on the streams that wait for
-    // new events, so these never fall silent while the connection is intact.
-    internal TimeSpan StallTimeout { get; }
+    // its end. See ServerConnection.StallTimeout.
+    internal TimeSpan StallTimeout => _connection.StallTimeout;
+
+    internal HttpClient HttpClient => _connection.HttpClient;
 
     public async Task PingAsync(CancellationToken token = default)
     {
-        const string expectedEventType = "io.eventsourcingdb.api.ping-received";
-
-        const string pingUrl = "/api/v1/ping";
-        _logger.LogTrace("Trying to ping '{Url}'...", pingUrl);
-
-        try
-        {
-            using var request = new HttpRequestMessage(HttpMethod.Get, pingUrl);
-            using var response = await SendAsync(request, HttpCompletionOption.ResponseContentRead, token).ConfigureAwait(false);
-            response.ThrowIfNotValidServerHeader();
-            await response.ThrowIfNotSuccessStatusCode(token);
-
-            var pingResponse = await response.Content
-                .ReadFromJsonAsync<Response>(_defaultSerializerOptions, token)
-                .ConfigureAwait(false);
-
-            pingResponse.ThrowNotExpectedType(expectedEventType);
-
-            _logger.LogTrace("Pinged '{Url}' successfully.", pingUrl);
-        }
-        catch (Exception e)
-        {
-            _logger.LogError(e, "Failed to ping '{Url}'.", pingUrl);
-            throw;
-        }
+        var transport = await GetTransportAsync(token).ConfigureAwait(false);
+        await transport.PingAsync(token).ConfigureAwait(false);
     }
 
     public async Task VerifyApiTokenAsync(CancellationToken token = default)
     {
-        const string expectedEventType = "io.eventsourcingdb.api.api-token-verified";
-
-        const string verifyUrl = "/api/v1/verify-api-token";
-        _logger.LogTrace("Trying to verify API token using url '{Url}'...", verifyUrl);
-
-        try
-        {
-            using var request = new HttpRequestMessage(HttpMethod.Post, verifyUrl);
-
-            using var response = await SendAsync(request, HttpCompletionOption.ResponseContentRead, token).ConfigureAwait(false);
-            response.ThrowIfNotValidServerHeader();
-            await response.ThrowIfNotSuccessStatusCode(token);
-
-            var verifyResponse = await response.Content
-                .ReadFromJsonAsync<Response>(_defaultSerializerOptions, token)
-                .ConfigureAwait(false);
-
-            verifyResponse.ThrowNotExpectedType(expectedEventType);
-
-            _logger.LogTrace("Verified API token using url '{Url}' successfully.", verifyUrl);
-        }
-        catch (Exception e)
-        {
-            _logger.LogError(e, "Failed to verify API token using url '{Url}'.", verifyUrl);
-            throw;
-        }
+        var transport = await GetTransportAsync(token).ConfigureAwait(false);
+        await transport.VerifyApiTokenAsync(token).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<Event>> WriteEventsAsync(
@@ -161,50 +105,8 @@ public class Client : IClient
         IEnumerable<Precondition>? preconditions = null,
         CancellationToken token = default)
     {
-        preconditions ??= [];
-        const string writeEventsUrl = "/api/v1/write-events";
-
-        _logger.LogTrace("Trying to write events using url '{Url}'...", writeEventsUrl);
-
-        try
-        {
-            var candidatesWithSerializedData = events
-                .Select(e => e with { Data = JsonSerializer.SerializeToElement(e.Data, _dataSerializerOptions) })
-                .ToArray();
-
-            using var request = new HttpRequestMessage(HttpMethod.Post, writeEventsUrl);
-            request.Content = new StringContent(
-                JsonSerializer.Serialize(new { events = candidatesWithSerializedData, preconditions }, _defaultSerializerOptions),
-                Encoding.UTF8,
-                MediaTypeNames.Application.Json
-            );
-
-            using var response = await SendAsync(request, HttpCompletionOption.ResponseContentRead, token).ConfigureAwait(false);
-            response.ThrowIfNotValidServerHeader();
-            await response.ThrowIfNotSuccessStatusCode(token);
-
-            var eventsResponse = await response.Content
-                .ReadFromJsonAsync<CloudEvent[]>(_defaultSerializerOptions, token)
-                .ConfigureAwait(false);
-
-            if (eventsResponse is null)
-            {
-                throw new InvalidValueException("Failed to parse response.");
-            }
-
-            var result = eventsResponse
-                .Select(cloudEvent => new Event(cloudEvent, _dataSerializerOptions))
-                .ToArray();
-
-            _logger.LogTrace("Written '{Count}' events using url '{Url}' successfully.", result.Length, writeEventsUrl);
-
-            return result;
-        }
-        catch (Exception e)
-        {
-            _logger.LogError(e, "Failed to write events using url '{Url}'.", writeEventsUrl);
-            throw;
-        }
+        var transport = await GetTransportAsync(token).ConfigureAwait(false);
+        return await transport.WriteEventsAsync(events, preconditions, token).ConfigureAwait(false);
     }
 
     public async IAsyncEnumerable<Event> ReadEventsAsync(
@@ -212,115 +114,24 @@ public class Client : IClient
         ReadEventsOptions options,
         [EnumeratorCancellation] CancellationToken token = default)
     {
-        const string readEventsUrl = "/api/v1/read-events";
-
-        _logger.LogTrace("Trying to read events using url '{Url}'...", readEventsUrl);
-
-        var requestOptions = new ReadEventsRequestOptions(options);
-
-        using var request = new HttpRequestMessage(HttpMethod.Post, readEventsUrl);
-        request.Content = new StringContent(
-            JsonSerializer.Serialize(new { subject, Options = requestOptions }, _defaultSerializerOptions),
-            Encoding.UTF8,
-            MediaTypeNames.Application.Json
-        );
-
-        using var response = await SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
-        response.ThrowIfNotValidServerHeader();
-        await response.ThrowIfNotSuccessStatusCode(token);
-
-        await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
-        await using var lineReader = new StreamLineReader(stream);
-
-        while (true)
+        var transport = await GetTransportAsync(token).ConfigureAwait(false);
+        await foreach (var @event in transport.ReadEventsAsync(subject, options, token).ConfigureAwait(false))
         {
-            var eventLine = await lineReader.ReadLineAsync(token).ConfigureAwait(false);
-
-            if (eventLine is null)
-            {
-                yield break;
-            }
-
-            var line = JsonSerializer
-                .Deserialize<Line>(eventLine, _defaultSerializerOptions)
-                .ThrowIfNull(eventLine);
-
-            switch (line.Type)
-            {
-                case "event":
-                    line.ThrowIfNotExpectedPayload("event");
-                    var cloudEvent = line.Payload.Deserialize<CloudEvent>(_defaultSerializerOptions);
-                    if (cloudEvent is null)
-                    {
-                        throw new InvalidValueException($"Failed to get the expected response, unable to deserialize '{line.Payload}' into cloud event.");
-                    }
-
-                    yield return new Event(cloudEvent, _dataSerializerOptions);
-
-                    break;
-                case "error":
-                    line.ThrowIfNotExpectedError();
-                    throw new Exception(line.Payload.GetString() ?? "unknown error");
-                default:
-                    throw new Exception($"Failed to handle unsupported line type '{line.Type}'.");
-            }
+            yield return @event;
         }
     }
 
     public async IAsyncEnumerable<string> ReadSubjectsAsync(
-        string baseSubject,
+        string subject,
+        ReadSubjectsOptions options,
         [EnumeratorCancellation] CancellationToken token = default)
     {
-        const string readSubjectsUrl = "/api/v1/read-subjects";
+        ArgumentNullException.ThrowIfNull(options);
 
-        _logger.LogTrace("Trying to read subjects using url '{Url}'...", readSubjectsUrl);
-
-        var requestBody = new { baseSubject };
-
-        using var request = new HttpRequestMessage(HttpMethod.Post, readSubjectsUrl);
-        request.Content = new StringContent(
-            JsonSerializer.Serialize(requestBody, _defaultSerializerOptions),
-            Encoding.UTF8,
-            MediaTypeNames.Application.Json
-        );
-
-        using var response = await SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
-        response.ThrowIfNotValidServerHeader();
-        await response.ThrowIfNotSuccessStatusCode(token);
-
-        await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
-        await using var lineReader = new StreamLineReader(stream);
-
-        while (true)
+        var transport = await GetTransportAsync(token).ConfigureAwait(false);
+        await foreach (var readSubject in transport.ReadSubjectsAsync(subject, options, token).ConfigureAwait(false))
         {
-            var subjectLine = await lineReader.ReadLineAsync(token).ConfigureAwait(false);
-
-            if (subjectLine is null)
-            {
-                yield break;
-            }
-
-            var line = JsonSerializer
-                .Deserialize<Line>(subjectLine, _defaultSerializerOptions)
-                .ThrowIfNull(subjectLine);
-
-            switch (line.Type)
-            {
-                case "subject":
-                    line.ThrowIfNotExpectedPayload("subject");
-                    var subject = line.Payload.Deserialize<Subject>(_defaultSerializerOptions);
-                    if (subject is null)
-                    {
-                        throw new InvalidValueException("Failed to deserialize stream subject.");
-                    }
-                    yield return subject.Name;
-                    break;
-                case "error":
-                    line.ThrowIfNotExpectedError();
-                    throw new Exception(line.Payload.GetString() ?? "unknown error");
-                default:
-                    throw new Exception($"Failed to handle unsupported line type '{line.Type}'.");
-            }
+            yield return readSubject;
         }
     }
 
@@ -329,114 +140,20 @@ public class Client : IClient
         ObserveEventsOptions options,
         [EnumeratorCancellation] CancellationToken token = default)
     {
-        const string observeEventsUrl = "/api/v1/observe-events";
-
-        _logger.LogTrace("Trying to observe events using url '{Url}'...", observeEventsUrl);
-
-        var requestOptions = new ObserveEventsRequestOptions(options);
-
-        using var request = new HttpRequestMessage(HttpMethod.Post, observeEventsUrl);
-        request.Content = new StringContent(
-            JsonSerializer.Serialize(new { subject, Options = requestOptions }, _defaultSerializerOptions),
-            Encoding.UTF8,
-            MediaTypeNames.Application.Json
-        );
-
-        using var response = await SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
-        response.ThrowIfNotValidServerHeader();
-        await response.ThrowIfNotSuccessStatusCode(token);
-
-        await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
-        await using var lineReader = new StreamLineReader(stream);
-
-        while (true)
+        var transport = await GetTransportAsync(token).ConfigureAwait(false);
+        await foreach (var @event in transport.ObserveEventsAsync(subject, options, token).ConfigureAwait(false))
         {
-            var eventLine = await ReadLineWithinHeartbeatTimeoutAsync(lineReader, token).ConfigureAwait(false);
-
-            if (eventLine is null)
-            {
-                yield break;
-            }
-
-            var line = JsonSerializer
-                .Deserialize<Line>(eventLine, _defaultSerializerOptions)
-                .ThrowIfNull(eventLine);
-
-            switch (line.Type)
-            {
-                case "event":
-                    line.ThrowIfNotExpectedPayload("event");
-                    var cloudEvent = line.Payload.Deserialize<CloudEvent>(_defaultSerializerOptions);
-                    if (cloudEvent is null)
-                    {
-                        throw new InvalidValueException($"Failed to get the expected response, unable to deserialize '{line.Payload}' into cloud event.");
-                    }
-
-                    yield return new Event(cloudEvent, _dataSerializerOptions);
-
-                    break;
-                case "error":
-                    line.ThrowIfNotExpectedError();
-                    throw new Exception(line.Payload.GetString() ?? "unknown error");
-                case "heartbeat":
-                    _logger.LogTrace("Heartbeat received.");
-                    break;
-                default:
-                    throw new Exception($"Failed to handle unsupported line type '{line.Type}'.");
-            }
+            yield return @event;
         }
     }
 
     public async IAsyncEnumerable<EventType> ReadEventTypesAsync(
         [EnumeratorCancellation] CancellationToken token = default)
     {
-        const string readEvenTypesUrl = "/api/v1/read-event-types";
-
-        _logger.LogTrace("Trying to read event types using url '{Url}'...", readEvenTypesUrl);
-
-        using var request = new HttpRequestMessage(HttpMethod.Post, readEvenTypesUrl);
-
-        using var response = await SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
-        response.ThrowIfNotValidServerHeader();
-        await response.ThrowIfNotSuccessStatusCode(token);
-
-        await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
-        await using var lineReader = new StreamLineReader(stream);
-
-        while (true)
+        var transport = await GetTransportAsync(token).ConfigureAwait(false);
+        await foreach (var eventType in transport.ReadEventTypesAsync(token).ConfigureAwait(false))
         {
-            var eventTypesLine = await lineReader.ReadLineAsync(token).ConfigureAwait(false);
-
-            if (eventTypesLine is null)
-            {
-                yield break;
-            }
-
-            var line = JsonSerializer
-                .Deserialize<Line>(eventTypesLine, _defaultSerializerOptions)
-                .ThrowIfNull(eventTypesLine);
-
-            switch (line.Type)
-            {
-                case "eventType":
-                    line.ThrowIfNotExpectedPayload("eventType");
-                    var eventType = line.Payload.Deserialize<EventType>(_defaultSerializerOptions);
-                    if (eventType is null)
-                    {
-                        throw new InvalidValueException($"Failed to get the expected response, unable to deserialize '{line.Payload}' into event type.");
-                    }
-
-                    yield return eventType;
-
-                    break;
-                case "error":
-                    line.ThrowIfNotExpectedError();
-                    throw new Exception(line.Payload.GetString() ?? "unknown error");
-                case "heartbeat":
-                    break;
-                default:
-                    throw new Exception($"Failed to handle unsupported line type '{line.Type}'.");
-            }
+            yield return eventType;
         }
     }
 
@@ -444,30 +161,8 @@ public class Client : IClient
         string eventType,
         CancellationToken token = default)
     {
-        const string readEventTypeUrl = "/api/v1/read-event-type";
-
-        _logger.LogTrace("Trying to read event type using url '{Url}'...", readEventTypeUrl);
-
-        using var request = new HttpRequestMessage(HttpMethod.Post, readEventTypeUrl);
-        request.Content = new StringContent(
-            JsonSerializer.Serialize(new { eventType }, _defaultSerializerOptions),
-            Encoding.UTF8,
-            MediaTypeNames.Application.Json
-        );
-
-        using var response = await SendAsync(request, HttpCompletionOption.ResponseContentRead, token).ConfigureAwait(false);
-        await response.ThrowIfNotSuccessStatusCode(token);
-
-        var eventTypeResponse = await response.Content
-            .ReadFromJsonAsync<EventType>(_defaultSerializerOptions, token)
-            .ConfigureAwait(false);
-
-        if (eventTypeResponse is null)
-        {
-            throw new InvalidValueException($"Failed to get the expected response, got null for event type '{eventType}'.");
-        }
-
-        return eventTypeResponse;
+        var transport = await GetTransportAsync(token).ConfigureAwait(false);
+        return await transport.ReadEventTypeAsync(eventType, token).ConfigureAwait(false);
     }
 
     public async Task RegisterEventSchemaAsync(
@@ -475,187 +170,101 @@ public class Client : IClient
         JsonElement schema,
         CancellationToken token = default)
     {
-        const string registerEventSchemaUrl = "/api/v1/register-event-schema";
-
-        var requestBody = new
-        {
-            eventType,
-            schema
-        };
-
-        using var request = new HttpRequestMessage(HttpMethod.Post, registerEventSchemaUrl);
-        request.Content = new StringContent(
-            JsonSerializer.Serialize(requestBody, _defaultSerializerOptions),
-            Encoding.UTF8,
-            MediaTypeNames.Application.Json
-        );
-
-        using var response = await SendAsync(request, HttpCompletionOption.ResponseContentRead, token).ConfigureAwait(false);
-        await response.ThrowIfNotSuccessStatusCode(token);
+        var transport = await GetTransportAsync(token).ConfigureAwait(false);
+        await transport.RegisterEventSchemaAsync(eventType, schema, token).ConfigureAwait(false);
     }
 
     public async IAsyncEnumerable<TRow?> RunEventQlQueryAsync<TRow>(
         string query,
         [EnumeratorCancellation] CancellationToken token = default)
     {
-        const string runEventQlQueryUrl = "/api/v1/run-eventql-query";
-
-        _logger.LogTrace("Trying to run EventQL query using url '{Url}'...", runEventQlQueryUrl);
-
-        using var request = new HttpRequestMessage(HttpMethod.Post, runEventQlQueryUrl);
-        request.Content = new StringContent(
-            JsonSerializer.Serialize(new RequestBody(query), _defaultSerializerOptions),
-            Encoding.UTF8,
-            MediaTypeNames.Application.Json
-        );
-
-        using var response = await SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
-        response.ThrowIfNotValidServerHeader();
-        await response.ThrowIfNotSuccessStatusCode(token);
-
-        await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
-        await using var lineReader = new StreamLineReader(stream);
-
-        while (true)
+        var transport = await GetTransportAsync(token).ConfigureAwait(false);
+        await foreach (var row in transport.RunEventQlQueryAsync<TRow>(query, token).ConfigureAwait(false))
         {
-            var queryLine = await ReadLineWithinHeartbeatTimeoutAsync(lineReader, token).ConfigureAwait(false);
-
-            if (queryLine is null)
-            {
-                yield break;
-            }
-
-            var line = JsonSerializer
-                .Deserialize<Line>(queryLine, _defaultSerializerOptions)
-                .ThrowIfNull(queryLine);
-
-            switch (line.Type)
-            {
-                case "row":
-                    yield return DeserializeRow<TRow>(line.Payload);
-                    break;
-                case "error":
-                    line.ThrowIfNotExpectedError();
-                    throw new Exception(line.Payload.GetString() ?? "unknown error");
-                case "heartbeat":
-                    break;
-                default:
-                    throw new Exception($"Failed to handle unsupported line type '{line.Type}'.");
-            }
+            yield return row;
         }
     }
 
-    // A stream with heartbeats has always reported a stall as a HeartbeatTimeoutException, so it
-    // keeps doing so.
-    private async ValueTask<string?> ReadLineWithinHeartbeatTimeoutAsync(StreamLineReader lineReader, CancellationToken token)
+    private async Task<IClient> GetTransportAsync(CancellationToken token)
     {
+        var apiVersion = await _apiVersionDetector.DetectAsync(token).ConfigureAwait(false);
+
+        return apiVersion switch
+        {
+            ApiVersion.V1 => _v1Transport,
+            ApiVersion.V2 => _v2Transport,
+            _ => throw new InvalidOperationException($"Unhandled API version '{apiVersion}'."),
+        };
+    }
+
+    // Asks the server for the ping of the v2 API. A server that offers it answers with an event
+    // in an envelope of the v2 API. A server before EventSourcingDB 1.3 does not know the path,
+    // and answers with 404, or with 405 where its UI serves other methods. Any other answer is no
+    // definitive one, so the probe fails with it.
+    private async Task<ApiVersion> ProbeAsync()
+    {
+        var logger = _connection.Logger;
+        logger.LogTrace("Trying to find out which API the server offers using url '{Url}'...", ProbeUrl);
+
         try
         {
-            return await lineReader.ReadLineAsync(token).ConfigureAwait(false);
+            using var request = new HttpRequestMessage(HttpMethod.Get, ProbeUrl);
+            using var response = await _connection
+                .SendAsync(request, HttpCompletionOption.ResponseContentRead, CancellationToken.None)
+                .ConfigureAwait(false);
+            response.ThrowIfNotValidServerHeader();
+
+            var apiVersion = response.StatusCode switch
+            {
+                HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed => ApiVersion.V1,
+                HttpStatusCode.OK => await ReadV2PingAsync(response).ConfigureAwait(false),
+                _ => throw await ServerConnection
+                    .ReadStatusErrorAsync(response, (_, _) => null, CancellationToken.None)
+                    .ConfigureAwait(false),
+            };
+
+            logger.LogTrace("The server offers the API {ApiVersion}.", apiVersion);
+
+            return apiVersion;
         }
-        catch (ConnectionStalledException)
+        catch (Exception e)
         {
-            throw new HeartbeatTimeoutException(
-                FormattableString.Invariant($"No event and no heartbeat arrived for {StallTimeout.TotalSeconds} seconds.")
-            );
+            logger.LogError(e, "Failed to find out which API the server offers using url '{Url}'.", ProbeUrl);
+            throw;
         }
     }
 
-    // Sends a request and fails once nothing arrives from the server for the stall timeout. Until
-    // the response headers arrive, and for a response that is read completely before it is
-    // returned (ResponseContentRead), a stall fails with a TaskCanceledException, as the timeout of
-    // HttpClient did before, with a ConnectionStalledException as its inner exception. Reading the
-    // content of a streamed response (ResponseHeadersRead) fails with a ConnectionStalledException.
-    private async Task<HttpResponseMessage> SendAsync(
-        HttpRequestMessage request,
-        HttpCompletionOption completionOption,
-        CancellationToken token)
+    private static async Task<ApiVersion> ReadV2PingAsync(HttpResponseMessage response)
     {
-        HttpResponseMessage response;
+        var rawEnvelope = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
-        using (var stallSource = CancellationTokenSource.CreateLinkedTokenSource(token))
-        {
-            stallSource.CancelAfter(StallTimeout);
-
-            try
-            {
-                response = await _httpClient
-                    .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, stallSource.Token)
-                    .ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (stallSource.IsCancellationRequested && !token.IsCancellationRequested)
-            {
-                throw CreateRequestStalledException(CreateConnectionStalledException());
-            }
-            catch (OperationCanceledException exception) when (token.IsCancellationRequested && exception.CancellationToken != token)
-            {
-                // HttpClient only knows the linked token, but callers tell their own cancellation
-                // apart by its token, so the exception must carry the caller's token.
-                throw new TaskCanceledException(exception.Message, exception, token);
-            }
-        }
-
-        response.Content = new StallDetectingContent(response.Content, StallTimeout, CreateConnectionStalledException);
-
-        if (completionOption is HttpCompletionOption.ResponseContentRead)
-        {
-            try
-            {
-                // Reading the content buffers it, so it can be read again afterwards.
-                await response.Content.ReadAsByteArrayAsync(token).ConfigureAwait(false);
-            }
-            catch (ConnectionStalledException exception)
-            {
-                response.Dispose();
-                throw CreateRequestStalledException(exception);
-            }
-            catch
-            {
-                response.Dispose();
-                throw;
-            }
-        }
-
-        return response;
-    }
-
-    private ConnectionStalledException CreateConnectionStalledException()
-    {
-        return new ConnectionStalledException(
-            FormattableString.Invariant($"Nothing arrived from the server for {StallTimeout.TotalSeconds} seconds.")
-        );
-    }
-
-    private TaskCanceledException CreateRequestStalledException(ConnectionStalledException innerException)
-    {
-        return new TaskCanceledException(
-            FormattableString.Invariant($"The request was canceled, since nothing arrived from the server for {StallTimeout.TotalSeconds} seconds."),
-            innerException
-        );
-    }
-
-    private TRow? DeserializeRow<TRow>(JsonElement payload)
-    {
+        Envelope? envelope;
         try
         {
-            if (typeof(TRow) != typeof(Event))
-            {
-                return payload.Deserialize<TRow>(_defaultSerializerOptions);
-            }
-
-            var cloudEvent = payload.Deserialize<CloudEvent>(_defaultSerializerOptions);
-            if (cloudEvent is null)
-            {
-                throw new InvalidValueException($"Failed to get the expected response, unable to deserialize '{payload}' into cloud event.");
-            }
-
-            // At design time, there is no type conversion between TRow and Event, so we need to cast to object first
-            return (TRow)(object)new Event(cloudEvent, _dataSerializerOptions);
+            envelope = JsonSerializer.Deserialize<Envelope>(rawEnvelope, ServerConnection.DefaultSerializerOptions);
         }
-        catch (JsonException ex)
+        catch (JsonException exception)
         {
-            throw new InvalidValueException($"Failed to deserialize query result into type '{typeof(TRow).Name}': {ex.Message}");
+            throw new InvalidValueException($"Failed to find out which API the server offers, the ping of the v2 API answered '{rawEnvelope}': {exception.Message}");
         }
+
+        if (envelope is not { Type: "event", Data.ValueKind: JsonValueKind.Object })
+        {
+            throw new InvalidValueException($"Failed to find out which API the server offers, the ping of the v2 API answered '{rawEnvelope}'.");
+        }
+
+        return ApiVersion.V2;
+    }
+
+    private static JsonSerializerOptions CreateDefaultDataSerializerOptions()
+    {
+        return new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            WriteIndented = false,
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        };
     }
 
     private static HttpClient CreateHttpClient(Uri baseUrl, string apiToken)

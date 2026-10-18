@@ -1,4 +1,3 @@
-using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Xunit;
@@ -50,6 +49,8 @@ public class RegisterEventSchemaTests : EventSourcingDbTests
 
         await registerEventSchemaAsync();
 
-        await Assert.ThrowsAsync<HttpRequestException>(registerEventSchemaAsync);
+        var exception = await Assert.ThrowsAsync<DbApiException>(registerEventSchemaAsync);
+
+        Assert.Equal(ErrorCodes.EventSchemaAlreadyRegistered, exception.Code);
     }
 }
