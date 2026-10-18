@@ -51,7 +51,7 @@ Optionally, you might provide a `CancellationToken`.
 
 The client SDK works with servers that offer the v2 API of EventSourcingDB, which EventSourcingDB offers since version 1.3, and with servers that only offer the v1 API. Creating a client does not make any request. Instead, the first request of a client finds out which API the server offers, by sending a `GET` request to `/api/v2/system/ping`, and the client remembers the answer for all of its following requests. If this fails, for example because the server is not reachable, the first request fails with that error, and the next request tries again.
 
-*Note that with dependency injection, every resolved `IClient` is a client of its own, which finds out the API on its own first request.*
+*Note that with dependency injection, every resolved `IClient` is a client of its own. The clients of one call to `AddEventSourcingDb` share the answer, so only the first request of the first of them finds out the API.*
 
 On servers that offer the v2 API, all reading requests use the HTTP method `QUERY` ([RFC 10008](https://www.rfc-editor.org/rfc/rfc10008)). If there is a proxy, a load balancer, or a firewall in front of EventSourcingDB, it has to let `QUERY` requests through. There is no fallback to `POST`.
 

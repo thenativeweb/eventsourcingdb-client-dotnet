@@ -31,6 +31,11 @@ public static class ServiceCollectionExtensions
             services.PostConfigure(configureOptions);
         }
 
+        // Every resolved client is one of its own, since typed HttpClients are transient, so the
+        // clients of this registration share which API the server offers, instead of each one
+        // finding it out on its first request.
+        var apiVersionDetector = new ApiVersionDetector();
+
         return services.AddHttpClient<IClient, Client>((client, sp) =>
             {
                 var options = sp.GetRequiredService<IOptions<EventSourcingDbOptions>>().Value;
@@ -41,7 +46,7 @@ public static class ServiceCollectionExtensions
                 var logger = sp.GetRequiredService<ILogger<Client>>();
                 var clientOptions = new ClientOptions { StallTimeout = options.StallTimeout };
 
-                return new Client(client, clientOptions, jsonSerializerOptions, logger);
+                return new Client(client, clientOptions, jsonSerializerOptions, logger, apiVersionDetector);
             }
         )
         // The client bounds every request by its stall timeout, so the default timeout of HttpClient

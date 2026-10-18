@@ -17,8 +17,9 @@ namespace EventSourcingDb;
 
 // The client talks to each server through the API that the server offers: v2 since
 // EventSourcingDB 1.3, and v1 before. Creating it makes no request; the first request of an
-// instance finds out which API the server offers, and every request uses that API from then on.
-// This is the one place that chooses between the two.
+// instance, or of any client of the same registration for dependency injection, finds out which
+// API the server offers, and every request uses that API from then on. This is the one place
+// that chooses between the two.
 public class Client : IClient
 {
     private const string ProbeUrl = "/api/v2/system/ping";
@@ -59,6 +60,18 @@ public class Client : IClient
     // All parameters are required, since optional ones would make a call such as
     // new Client(httpClient, null) ambiguous with the constructor above.
     public Client(HttpClient httpClient, ClientOptions options, JsonSerializerOptions? dataSerializerOptions, ILogger<Client>? logger)
+        : this(httpClient, options, dataSerializerOptions, logger, new ApiVersionDetector())
+    {
+    }
+
+    // The clients of a registration for dependency injection share the detector, so that each
+    // of them does not probe on its own.
+    internal Client(
+        HttpClient httpClient,
+        ClientOptions options,
+        JsonSerializerOptions? dataSerializerOptions,
+        ILogger<Client>? logger,
+        ApiVersionDetector apiVersionDetector)
     {
         ArgumentNullException.ThrowIfNull(options);
 
@@ -77,7 +90,7 @@ public class Client : IClient
             dataSerializerOptions ?? CreateDefaultDataSerializerOptions(),
             logger ?? NullLogger<Client>.Instance
         );
-        _apiVersionDetector = new ApiVersionDetector(ProbeAsync);
+        _apiVersionDetector = apiVersionDetector;
         _v1Transport = new V1Transport(_connection);
         _v2Transport = new V2Transport(_connection);
     }
@@ -187,7 +200,7 @@ public class Client : IClient
 
     private async Task<IClient> GetTransportAsync(CancellationToken token)
     {
-        var apiVersion = await _apiVersionDetector.DetectAsync(token).ConfigureAwait(false);
+        var apiVersion = await _apiVersionDetector.DetectAsync(ProbeAsync, token).ConfigureAwait(false);
 
         return apiVersion switch
         {

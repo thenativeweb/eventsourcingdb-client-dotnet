@@ -1,9 +1,13 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using EventSourcingDb.DependencyInjection;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace EventSourcingDb.Tests;
@@ -78,7 +82,7 @@ public sealed class ApiVersionDetectionTests
     }
 
     [Fact]
-    public async Task ProbesForEveryClientOnItsOwn()
+    public async Task ProbesForEveryClientThatIsCreatedDirectlyOnItsOwn()
     {
         var server = new FakeServer(request => FakeServer.IsProbe(request)
             ? FakeServer.AnswerProbe("v1")
@@ -86,6 +90,74 @@ public sealed class ApiVersionDetectionTests
 
         await server.CreateClient().PingAsync(TestContext.Current.CancellationToken);
         await server.CreateClient().PingAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, server.ProbeCount);
+    }
+
+    [Fact]
+    public async Task SharesTheProbeBetweenAllClientsOfARegistrationForDependencyInjection()
+    {
+        var server = new FakeServer(request => FakeServer.IsProbe(request)
+            ? FakeServer.AnswerProbe("v1")
+            : FakeServer.Json(HttpStatusCode.OK, V1Ping));
+        await using var serviceProvider = CreateServiceProvider(server);
+
+        // Like the requests of an application, each of which resolves a client of its own.
+        for (var i = 0; i < 5; i++)
+        {
+            using var scope = serviceProvider.CreateScope();
+            var client = scope.ServiceProvider.GetRequiredService<IClient>();
+            await client.PingAsync(TestContext.Current.CancellationToken);
+        }
+
+        Assert.Equal(1, server.ProbeCount);
+        Assert.Equal(5, server.Requests.Count(request => request.Path == "/api/v1/ping"));
+    }
+
+    [Fact]
+    public async Task DoesNotShareAFailedProbeBetweenTheClientsOfARegistrationForDependencyInjection()
+    {
+        var probeCount = 0;
+        var server = new FakeServer(request =>
+        {
+            if (!FakeServer.IsProbe(request))
+            {
+                return FakeServer.Json(HttpStatusCode.OK, V1Ping);
+            }
+
+            return Interlocked.Increment(ref probeCount) == 1
+                ? FakeServer.Text(HttpStatusCode.ServiceUnavailable, "the server is shutting down\n")
+                : FakeServer.AnswerProbe("v1");
+        });
+        await using var serviceProvider = CreateServiceProvider(server);
+
+        using (var scope = serviceProvider.CreateScope())
+        {
+            var client = scope.ServiceProvider.GetRequiredService<IClient>();
+            await Assert.ThrowsAsync<DbApiException>(() => client.PingAsync(TestContext.Current.CancellationToken));
+        }
+
+        for (var i = 0; i < 2; i++)
+        {
+            using var scope = serviceProvider.CreateScope();
+            var client = scope.ServiceProvider.GetRequiredService<IClient>();
+            await client.PingAsync(TestContext.Current.CancellationToken);
+        }
+
+        Assert.Equal(2, server.ProbeCount);
+    }
+
+    [Fact]
+    public async Task ProbesForEveryRegistrationForDependencyInjectionOnItsOwn()
+    {
+        var server = new FakeServer(request => FakeServer.IsProbe(request)
+            ? FakeServer.AnswerProbe("v1")
+            : FakeServer.Json(HttpStatusCode.OK, V1Ping));
+        await using var firstServiceProvider = CreateServiceProvider(server);
+        await using var secondServiceProvider = CreateServiceProvider(server);
+
+        await firstServiceProvider.GetRequiredService<IClient>().PingAsync(TestContext.Current.CancellationToken);
+        await secondServiceProvider.GetRequiredService<IClient>().PingAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(2, server.ProbeCount);
     }
@@ -274,5 +346,23 @@ public sealed class ApiVersionDetectionTests
             "a network error" => (() => throw new HttpRequestException(HttpRequestError.ConnectionError, "Connection refused"), typeof(HttpRequestException)),
             _ => throw new ArgumentOutOfRangeException(nameof(failure), failure, "Unknown failure."),
         };
+    }
+
+    private static ServiceProvider CreateServiceProvider(FakeServer server)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(
+                [
+                    new KeyValuePair<string, string?>("EventSourcingDb:BaseUrl", "http://esdb.test"),
+                    new KeyValuePair<string, string?>("EventSourcingDb:ApiToken", "secret")
+                ]
+            )
+            .Build();
+
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddEventSourcingDb(configuration).ConfigurePrimaryHttpMessageHandler(() => server);
+
+        return services.BuildServiceProvider();
     }
 }
