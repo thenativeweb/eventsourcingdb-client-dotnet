@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -87,9 +88,15 @@ internal sealed class FakeServer(Func<FakeRequest, CancellationToken, Task<HttpR
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        var body = request.Content is null
-            ? null
-            : await request.Content.ReadAsStringAsync(cancellationToken);
+        // The body is read as a connection reads it, without loading it into a buffer, which
+        // would keep the client from telling how often a write was sent.
+        string? body = null;
+        if (request.Content is not null)
+        {
+            using var buffer = new MemoryStream();
+            await request.Content.CopyToAsync(buffer, cancellationToken);
+            body = Encoding.UTF8.GetString(buffer.ToArray());
+        }
         var fakeRequest = new FakeRequest(request.Method.Method, request.RequestUri!.AbsolutePath, body);
 
         _requests.Enqueue(fakeRequest);

@@ -11,6 +11,8 @@ namespace EventSourcingDb;
 // OutcomeUnknownException.
 internal static class WriteOutcome
 {
+    // The content must stay undisposed until the write has ended, since telling the outcome
+    // apart may need to look at it.
     public static async Task<T> GuardAsync<T>(
         Func<Task<T>> write,
         WriteContent content,
@@ -24,13 +26,18 @@ internal static class WriteOutcome
         {
             return await write().ConfigureAwait(false);
         }
-        catch (Exception exception) when (!IsCertainlyNotStored(exception, content, isRefusal))
+        catch (Exception exception)
         {
+            if (await IsCertainlyNotStoredAsync(exception, content, isRefusal).ConfigureAwait(false))
+            {
+                throw;
+            }
+
             throw new OutcomeUnknownException(exception);
         }
     }
 
-    private static bool IsCertainlyNotStored(Exception exception, WriteContent content, Func<DbApiException, bool> isRefusal)
+    private static async Task<bool> IsCertainlyNotStoredAsync(Exception exception, WriteContent content, Func<DbApiException, bool> isRefusal)
     {
         // Until the body is handed on to a connection, nothing of the request was sent, whatever
         // failed: resolving the host, connecting, TLS, or a stall or a cancellation meanwhile.
@@ -41,6 +48,13 @@ internal static class WriteOutcome
             return true;
         }
 
-        return exception is DbApiException dbApiException && isRefusal(dbApiException);
+        if (exception is not DbApiException dbApiException || !isRefusal(dbApiException))
+        {
+            return false;
+        }
+
+        // A refusal only tells about the attempt that it answers. If a handler sent the write
+        // again, an earlier attempt may have been stored, and lost its answer.
+        return !await content.MayHaveBeenSentMoreThanOnceAsync().ConfigureAwait(false);
     }
 }

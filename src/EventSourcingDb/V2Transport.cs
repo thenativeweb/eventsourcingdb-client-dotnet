@@ -89,11 +89,12 @@ internal sealed class V2Transport(ServerConnection connection) : IClient
             // failure of the write, which is certainly not stored then.
             using var content = ServerConnection.CreateWriteContent(new { events = candidatesWithSerializedData, preconditions });
 
+            // The request owns the content, and the content has to outlive the write, since telling
+            // its outcome apart may need to look at it.
+            using var request = new HttpRequestMessage(HttpMethod.Post, writeEventsUrl) { Content = content };
+
             var result = await WriteOutcome.GuardAsync(async () =>
             {
-                using var request = new HttpRequestMessage(HttpMethod.Post, writeEventsUrl);
-                request.Content = content;
-
                 var writtenEvents = new List<Event>();
                 await foreach (var item in ReadItemsAsync(request, token).ConfigureAwait(false))
                 {
@@ -265,11 +266,12 @@ internal sealed class V2Transport(ServerConnection connection) : IClient
         // failure of the write, which is certainly not stored then.
         using var content = ServerConnection.CreateWriteContent(new { type = eventType, schema });
 
+        // The request owns the content, and the content has to outlive the write, since telling
+        // its outcome apart may need to look at it.
+        using var request = new HttpRequestMessage(HttpMethod.Post, registerEventSchemaUrl) { Content = content };
+
         await WriteOutcome.GuardAsync(async () =>
         {
-            using var request = new HttpRequestMessage(HttpMethod.Post, registerEventSchemaUrl);
-            request.Content = content;
-
             await foreach (var item in ReadItemsAsync(request, token).ConfigureAwait(false))
             {
                 switch (item.Type)

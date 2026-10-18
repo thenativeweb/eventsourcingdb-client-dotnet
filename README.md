@@ -102,6 +102,20 @@ catch (OutcomeUnknownException)
 }
 ```
 
+A refusal only tells about the attempt that it answers. So if a handler of the `HttpClient` sent a write more than once, or read its body into a buffer, after which the client SDK cannot tell how often it was sent, every failure of the write is an `OutcomeUnknownException`, a refusal included.
+
+*Note that a handler that retries requests can store a write twice: the first attempt is stored but its response is lost, and the second attempt succeeds as well. If you use the standard resilience handler of `Microsoft.Extensions.Http.Resilience`, for the EventSourcingDB client or for all clients, as the service defaults of .NET Aspire do, turn off its retries for writes:*
+
+```csharp
+// For the EventSourcingDB client.
+builder.Services.AddEventSourcingDb(builder.Configuration)
+    .AddStandardResilienceHandler(options => options.Retry.DisableForUnsafeHttpMethods());
+
+// For all clients.
+builder.Services.ConfigureHttpClientDefaults(http =>
+    http.AddStandardResilienceHandler(options => options.Retry.DisableForUnsafeHttpMethods()));
+```
+
 ### Configuring the Stall Timeout
 
 If the connection to EventSourcingDB stalls, for example behind a proxy that keeps it open but no longer passes anything on, a request fails once nothing at all has arrived from the server for the stall timeout. This applies to every request, from sending it until its end, including connecting and waiting for the response. Everything that arrives starts the time anew, so a long stream that keeps receiving events or heartbeats is never cut off.
