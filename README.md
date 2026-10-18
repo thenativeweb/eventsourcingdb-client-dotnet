@@ -81,7 +81,7 @@ catch (DbApiException exception) when (exception.Code == ErrorCodes.Precondition
 }
 ```
 
-Servers that only offer the v1 API report errors without a code. For those that clearly match an error of the v2 API, the client SDK sets the code of the v2 API, for example `ErrorCodes.PreconditionViolated` for a precondition that does not hold, `ErrorCodes.EventSchemaViolated` for an event that does not match its schema, `ErrorCodes.EventSchemaAlreadyRegistered`, `ErrorCodes.EventTypeUnknown`, `ErrorCodes.StoreReadOnly`, and `ErrorCodes.LicenseInvalid`. All other errors of the v1 API have no code.
+Servers that only offer the v1 API report errors without a code. For those that clearly match an error of the v2 API, the client SDK sets the code of the v2 API: `ErrorCodes.PreconditionViolated` for a precondition that does not hold, `ErrorCodes.CapacityExceeded` for a store that is full, `ErrorCodes.EventSchemaViolated` for an event, or an existing event, that does not match a schema, `ErrorCodes.EventSchemaAlreadyRegistered`, `ErrorCodes.RangeUnsatisfiable` for a `FromLatestEvent` beyond the `UpperBound`, `ErrorCodes.EventTypeUnknown`, `ErrorCodes.StoreReadOnly`, and `ErrorCodes.LicenseInvalid`. All other errors of the v1 API have no code.
 
 The client SDK never repeats a request on its own, not even after a status of `429`.
 
