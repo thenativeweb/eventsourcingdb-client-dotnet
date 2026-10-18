@@ -78,6 +78,44 @@ public sealed class StallTimeoutTests
         Assert.Equal(TimeSpan.FromSeconds(5), client.StallTimeout);
     }
 
+    [Fact]
+    public void UsesTheStallTimeoutOfTheClientOptionsWithACustomHttpClient()
+    {
+        using var httpClient = new HttpClient();
+
+        var client = new Client(httpClient, new ClientOptions { StallTimeout = TimeSpan.FromSeconds(5) }, null, null);
+
+        Assert.Equal(TimeSpan.FromSeconds(5), client.StallTimeout);
+        Assert.Throws<ArgumentNullException>(() => new Client(httpClient, null!, null, null));
+    }
+
+    [Fact]
+    public void KeepsResolvingACustomHttpClientWithANullArgumentToTheConstructorWithoutClientOptions()
+    {
+        using var httpClient = new HttpClient();
+
+        // These calls compiled before ClientOptions existed. They must neither become ambiguous nor
+        // reach the constructor with ClientOptions, which would reject null options.
+        Assert.Equal(TimeSpan.FromSeconds(30), new Client(httpClient, null).StallTimeout);
+        Assert.Equal(TimeSpan.FromSeconds(30), new Client(httpClient, null, null).StallTimeout);
+        Assert.Equal(TimeSpan.FromSeconds(30), new Client(httpClient, default).StallTimeout);
+    }
+
+    [Fact]
+    public async Task FailsAStalledRequestOfACustomHttpClientAfterTheStallTimeout()
+    {
+        await using var server = new StallingTestServer((_, _) => Task.CompletedTask);
+        using var httpClient = new HttpClient { BaseAddress = server.BaseUrl };
+        var client = new Client(httpClient, new ClientOptions { StallTimeout = _stallTimeout }, null, null);
+
+        var stopwatch = Stopwatch.StartNew();
+        var exception = await Assert.ThrowsAsync<TaskCanceledException>(() => RunAsync(client, "ping"));
+        stopwatch.Stop();
+
+        Assert.IsType<ConnectionStalledException>(exception.InnerException);
+        AssertStalledAfterTheStallTimeout(stopwatch.Elapsed);
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]

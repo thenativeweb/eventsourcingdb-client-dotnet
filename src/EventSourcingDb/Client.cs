@@ -61,7 +61,9 @@ public class Client : IClient
     {
     }
 
-    internal Client(HttpClient httpClient, ClientOptions options, JsonSerializerOptions? dataSerializerOptions = null, ILogger<Client>? logger = null)
+    // All parameters are required, since optional ones would make a call such as
+    // new Client(httpClient, null) ambiguous with the constructor above.
+    public Client(HttpClient httpClient, ClientOptions options, JsonSerializerOptions? dataSerializerOptions, ILogger<Client>? logger)
     {
         ArgumentNullException.ThrowIfNull(options);
 

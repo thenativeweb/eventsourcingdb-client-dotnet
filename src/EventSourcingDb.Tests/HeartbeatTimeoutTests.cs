@@ -25,7 +25,7 @@ public sealed class HeartbeatTimeoutTests
             await sendLine(Heartbeat);
         });
         using var httpClient = new HttpClient { BaseAddress = server.BaseUrl };
-        var client = new Client(httpClient, new ClientOptions { StallTimeout = _heartbeatTimeout });
+        var client = new Client(httpClient, new ClientOptions { StallTimeout = _heartbeatTimeout }, null, null);
 
         using var source = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var stopwatch = Stopwatch.StartNew();
@@ -63,7 +63,7 @@ public sealed class HeartbeatTimeoutTests
             await sendLine(GetItemLine(endpoint, "0"));
         });
         using var httpClient = new HttpClient { BaseAddress = server.BaseUrl };
-        var client = new Client(httpClient, new ClientOptions { StallTimeout = _heartbeatTimeout });
+        var client = new Client(httpClient, new ClientOptions { StallTimeout = _heartbeatTimeout }, null, null);
 
         var items = new List<Event?>();
         using var source = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -98,7 +98,7 @@ public sealed class HeartbeatTimeoutTests
             }
         });
         using var httpClient = new HttpClient { BaseAddress = server.BaseUrl };
-        var client = new Client(httpClient, new ClientOptions { StallTimeout = _heartbeatTimeout });
+        var client = new Client(httpClient, new ClientOptions { StallTimeout = _heartbeatTimeout }, null, null);
 
         var items = new List<Event?>();
         using var source = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -125,7 +125,7 @@ public sealed class HeartbeatTimeoutTests
             await sendLine(Heartbeat);
         });
         using var httpClient = new HttpClient { BaseAddress = server.BaseUrl };
-        var client = new Client(httpClient, new ClientOptions { StallTimeout = TimeSpan.FromSeconds(2) });
+        var client = new Client(httpClient, new ClientOptions { StallTimeout = TimeSpan.FromSeconds(2) }, null, null);
 
         using var source = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
 

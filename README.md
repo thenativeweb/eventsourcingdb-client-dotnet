@@ -159,7 +159,16 @@ var client = new Client(httpClient);
 
 This approach gives you full control over the HTTP client's behavior while maintaining compatibility with all EventSourcingDB client features.
 
-*Note that the `Timeout` of a custom `HttpClient` only applies until the response headers arrive. Every request is also bounded by the [stall timeout](#configuring-the-stall-timeout) of 30 seconds.*
+*Note that the `Timeout` of a custom `HttpClient` only applies until the response headers arrive. Every request is also bounded by the [stall timeout](#configuring-the-stall-timeout), which defaults to 30 seconds.*
+
+To change the stall timeout, pass `ClientOptions` as well. This constructor requires all of its parameters, so pass `null` for the `JsonSerializerOptions` and the logger if you do not need them:
+
+```csharp
+var client = new Client(httpClient, new ClientOptions
+{
+    StallTimeout = TimeSpan.FromSeconds(10)
+}, null, null);
+```
 
 ## Writing Events
 
