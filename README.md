@@ -119,7 +119,7 @@ builder.Services.AddEventSourcingDb(builder.Configuration)
 
 This approach integrates seamlessly with .NET's `IHttpClientFactory`, ensuring proper connection pooling and lifecycle management.
 
-*Note that the client bounds every request by its [stall timeout](#configuring-the-stall-timeout), so it turns off the `Timeout` of the `HttpClient` by default. A `Timeout` that you set here applies, but only until the response headers arrive.*
+*Note that the client bounds every request by its [stall timeout](#configuring-the-stall-timeout), so it turns off the default `Timeout` of 100 seconds of the `HttpClient`. A `Timeout` that you set here, or for all clients via `ConfigureHttpClientDefaults`, applies, but only until the response headers arrive.*
 
 ### Using a Custom HttpClient
 

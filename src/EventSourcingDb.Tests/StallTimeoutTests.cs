@@ -377,6 +377,29 @@ public sealed class StallTimeoutTests
         Assert.Equal(TimeSpan.FromSeconds(10), GetHttpClient(client).Timeout);
     }
 
+    [Fact]
+    public void KeepsATimeoutConfiguredForAllHttpClientsOfTheDependencyInjection()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(
+                [
+                    new KeyValuePair<string, string?>("EventSourcingDb:BaseUrl", "http://localhost:3000"),
+                    new KeyValuePair<string, string?>("EventSourcingDb:ApiToken", "secret")
+                ]
+            )
+            .Build();
+
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.ConfigureHttpClientDefaults(builder => builder.ConfigureHttpClient(httpClient => httpClient.Timeout = TimeSpan.FromSeconds(5)));
+        services.AddEventSourcingDb(configuration);
+
+        using var serviceProvider = services.BuildServiceProvider();
+        var client = (Client)serviceProvider.GetRequiredService<IClient>();
+
+        Assert.Equal(TimeSpan.FromSeconds(5), GetHttpClient(client).Timeout);
+    }
+
     private static CancellationTokenSource CreateGuard()
     {
         var guard = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);

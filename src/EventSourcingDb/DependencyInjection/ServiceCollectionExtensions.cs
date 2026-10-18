@@ -11,6 +11,9 @@ namespace EventSourcingDb.DependencyInjection;
 
 public static class ServiceCollectionExtensions
 {
+    // The timeout that HttpClient uses unless an application sets a different one.
+    private static readonly TimeSpan _defaultHttpClientTimeout = TimeSpan.FromSeconds(100);
+
     public static IHttpClientBuilder AddEventSourcingDb(
         this IServiceCollection services,
         IConfiguration configuration,
@@ -42,7 +45,14 @@ public static class ServiceCollectionExtensions
             }
         )
         // The client bounds every request by its stall timeout, so the default timeout of HttpClient
-        // must not cut requests short. A timeout configured on the returned builder still applies.
-        .ConfigureHttpClient(client => client.Timeout = Timeout.InfiniteTimeSpan);
+        // must not cut requests short. A timeout that the application configured, for all clients or
+        // on the returned builder, still applies.
+        .ConfigureHttpClient(client =>
+        {
+            if (client.Timeout == _defaultHttpClientTimeout)
+            {
+                client.Timeout = Timeout.InfiniteTimeSpan;
+            }
+        });
     }
 }
