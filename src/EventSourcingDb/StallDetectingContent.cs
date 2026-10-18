@@ -93,6 +93,12 @@ internal sealed class StallDetectingContent : HttpContent
             {
                 throw createStallException();
             }
+            catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested && exception.CancellationToken != cancellationToken)
+            {
+                // The inner stream only knows the linked token, but callers tell their own
+                // cancellation apart by its token, so the exception must carry the caller's token.
+                throw new TaskCanceledException(exception.Message, exception, cancellationToken);
+            }
         }
 
         public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)

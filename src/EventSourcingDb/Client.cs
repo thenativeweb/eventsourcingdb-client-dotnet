@@ -587,6 +587,12 @@ public class Client : IClient
             {
                 throw CreateRequestStalledException(CreateConnectionStalledException());
             }
+            catch (OperationCanceledException exception) when (token.IsCancellationRequested && exception.CancellationToken != token)
+            {
+                // HttpClient only knows the linked token, but callers tell their own cancellation
+                // apart by its token, so the exception must carry the caller's token.
+                throw new TaskCanceledException(exception.Message, exception, token);
+            }
         }
 
         response.Content = new StallDetectingContent(response.Content, StallTimeout, CreateConnectionStalledException);

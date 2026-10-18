@@ -281,16 +281,45 @@ public sealed class StallTimeoutTests
         Assert.True(stopwatch.Elapsed > _stallTimeout * 3);
     }
 
-    [Fact]
-    public async Task EndsWithACancellationIfTheCallerCancelsFirst()
+    [Theory]
+    [InlineData("ping", false)]
+    [InlineData("ping", true)]
+    [InlineData("read-events", false)]
+    public async Task EndsWithACancellationOfTheCallersTokenIfTheCallerCancelsFirst(string request, bool sendHeaders)
     {
-        await using var server = new StallingTestServer((_, _) => Task.CompletedTask);
+        await using var server = new StallingTestServer(async (write, _) =>
+        {
+            if (sendHeaders)
+            {
+                await write(
+                    "HTTP/1.1 200 OK\r\n" +
+                    "Server: EventSourcingDB/0.0.0\r\n" +
+                    "Content-Type: application/json\r\n" +
+                    "Content-Length: 100\r\n" +
+                    "\r\n" +
+                    """{"type":"""
+                );
+            }
+        });
         var client = new Client(server.BaseUrl, "secret", new ClientOptions { StallTimeout = TimeSpan.FromSeconds(5) });
 
         using var source = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
 
-        var exception = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.PingAsync(source.Token));
+        var exception = await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+        {
+            if (request == "ping")
+            {
+                await client.PingAsync(source.Token);
+                return;
+            }
 
+            await foreach (var _ in GetStream(client, request, source.Token))
+            {
+            }
+        });
+
+        // Callers tell their own cancellation apart by its token, as with HttpClient.
+        Assert.Equal(source.Token, exception.CancellationToken);
         Assert.IsNotType<ConnectionStalledException>(exception.InnerException);
     }
 
