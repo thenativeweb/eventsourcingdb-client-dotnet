@@ -15,14 +15,6 @@ public sealed class HeartbeatTimeoutTests
 
     private static readonly TimeSpan _heartbeatTimeout = TimeSpan.FromMilliseconds(500);
 
-    [Fact]
-    public void UsesAHeartbeatTimeoutOfThirtySecondsByDefault()
-    {
-        var client = new Client(new Uri("http://localhost:3000"), "secret");
-
-        Assert.Equal(TimeSpan.FromSeconds(30), client.HeartbeatTimeout);
-    }
-
     [Theory]
     [InlineData("observe-events")]
     [InlineData("run-eventql-query")]
@@ -33,7 +25,7 @@ public sealed class HeartbeatTimeoutTests
             await sendLine(Heartbeat);
         });
         using var httpClient = new HttpClient { BaseAddress = server.BaseUrl };
-        var client = new Client(httpClient) { HeartbeatTimeout = _heartbeatTimeout };
+        var client = new Client(httpClient, new ClientOptions { StallTimeout = _heartbeatTimeout });
 
         using var source = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         var stopwatch = Stopwatch.StartNew();
@@ -71,7 +63,7 @@ public sealed class HeartbeatTimeoutTests
             await sendLine(GetItemLine(endpoint, "0"));
         });
         using var httpClient = new HttpClient { BaseAddress = server.BaseUrl };
-        var client = new Client(httpClient) { HeartbeatTimeout = _heartbeatTimeout };
+        var client = new Client(httpClient, new ClientOptions { StallTimeout = _heartbeatTimeout });
 
         var items = new List<Event?>();
         using var source = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -106,7 +98,7 @@ public sealed class HeartbeatTimeoutTests
             }
         });
         using var httpClient = new HttpClient { BaseAddress = server.BaseUrl };
-        var client = new Client(httpClient) { HeartbeatTimeout = _heartbeatTimeout };
+        var client = new Client(httpClient, new ClientOptions { StallTimeout = _heartbeatTimeout });
 
         var items = new List<Event?>();
         using var source = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -133,7 +125,7 @@ public sealed class HeartbeatTimeoutTests
             await sendLine(Heartbeat);
         });
         using var httpClient = new HttpClient { BaseAddress = server.BaseUrl };
-        var client = new Client(httpClient) { HeartbeatTimeout = TimeSpan.FromSeconds(2) };
+        var client = new Client(httpClient, new ClientOptions { StallTimeout = TimeSpan.FromSeconds(2) });
 
         using var source = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
 

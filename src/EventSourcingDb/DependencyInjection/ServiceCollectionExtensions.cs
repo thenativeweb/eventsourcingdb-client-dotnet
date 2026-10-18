@@ -1,6 +1,7 @@
 using System;
 using System.Net.Http.Headers;
 using System.Text.Json;
+using System.Threading;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -35,9 +36,13 @@ public static class ServiceCollectionExtensions
                 client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", options.ApiToken);
 
                 var logger = sp.GetRequiredService<ILogger<Client>>();
+                var clientOptions = new ClientOptions { StallTimeout = options.StallTimeout };
 
-                return new Client(client, jsonSerializerOptions, logger);
+                return new Client(client, clientOptions, jsonSerializerOptions, logger);
             }
-        );
+        )
+        // The client bounds every request by its stall timeout, so the default timeout of HttpClient
+        // must not cut requests short. A timeout configured on the returned builder still applies.
+        .ConfigureHttpClient(client => client.Timeout = Timeout.InfiniteTimeSpan);
     }
 }

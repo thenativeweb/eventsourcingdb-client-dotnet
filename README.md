@@ -45,6 +45,27 @@ await client.VerifyApiTokenAsync();
 
 Optionally, you might provide a `CancellationToken`.
 
+### Configuring the Stall Timeout
+
+If the connection to EventSourcingDB stalls, for example behind a proxy that keeps it open but no longer passes anything on, a request fails once nothing at all has arrived from the server for the stall timeout. This applies to every request, from sending it until its end, including connecting and waiting for the response. Everything that arrives starts the time anew, so a long stream that keeps receiving events or heartbeats is never cut off.
+
+The stall timeout defaults to 30 seconds. To change it, pass `ClientOptions` when creating the client:
+
+```csharp
+var client = new Client(url, apiToken, new ClientOptions
+{
+    StallTimeout = TimeSpan.FromSeconds(10)
+});
+```
+
+When a request stalls, it fails:
+
+- while waiting for the response, and while reading the response of a method that does not return a stream, with a `TaskCanceledException`, whose `InnerException` is a `ConnectionStalledException`,
+- while reading the stream of `ObserveEventsAsync` or `RunEventQlQueryAsync`, with a `HeartbeatTimeoutException`,
+- while reading the stream of `ReadEventsAsync`, `ReadSubjectsAsync`, or `ReadEventTypesAsync`, with a `ConnectionStalledException`.
+
+`ConnectionStalledException` derives from `TimeoutException`. A `CancellationToken` that you pass to a method can still cancel a request earlier.
+
 ### Serializing and Deserializing
 
 Basically, `System.Text.Json` is used for JSON serialization and deserialization.
@@ -81,6 +102,8 @@ builder.Services.AddEventSourcingDb(builder.Configuration, options =>
 });
 ```
 
+To change the [stall timeout](#configuring-the-stall-timeout), set `StallTimeout`, either in the configuration (e.g. `"StallTimeout": "00:00:10"`) or in the configuration action (e.g. `options.StallTimeout = TimeSpan.FromSeconds(10);`).
+
 ### Configuring the HttpClient via Dependency Injection
 
 The `AddEventSourcingDb` method returns an `IHttpClientBuilder`, which allows you to configure the underlying `HttpClient` and add custom message handlers. This is useful for setting custom timeouts, implementing retry policies, adding logging or tracing handlers, and configuring advanced HTTP settings.
@@ -95,6 +118,8 @@ builder.Services.AddEventSourcingDb(builder.Configuration)
 ```
 
 This approach integrates seamlessly with .NET's `IHttpClientFactory`, ensuring proper connection pooling and lifecycle management.
+
+*Note that the client bounds every request by its [stall timeout](#configuring-the-stall-timeout), so it turns off the `Timeout` of the `HttpClient` by default. A `Timeout` that you set here applies, but only until the response headers arrive.*
 
 ### Using a Custom HttpClient
 
@@ -133,6 +158,8 @@ var client = new Client(httpClient);
 ```
 
 This approach gives you full control over the HTTP client's behavior while maintaining compatibility with all EventSourcingDB client features.
+
+*Note that the `Timeout` of a custom `HttpClient` only applies until the response headers arrive. Every request is also bounded by the [stall timeout](#configuring-the-stall-timeout) of 30 seconds.*
 
 ## Writing Events
 
@@ -331,7 +358,7 @@ await foreach (var row in client.RunEventQlQueryAsync<Event>(
 
 Each row is deserialized automatically and returned as `TRow`, according to your projection. Ensure your projection matches the shape of `TRow`.
 
-EventSourcingDB sends a heartbeat every second while there are no rows to send. If neither a row nor a heartbeat arrives for 30 seconds, the connection has stalled, and the stream will terminate with a `HeartbeatTimeoutException`.
+EventSourcingDB sends a heartbeat every second while there are no rows to send. If nothing arrives for the [stall timeout](#configuring-the-stall-timeout), which defaults to 30 seconds, the connection has stalled, and the stream will terminate with a `HeartbeatTimeoutException`.
 
 *Optionally, you might provide a `CancellationToken`.*
 
@@ -352,7 +379,7 @@ await foreach (var @event in client.ObserveEventsAsync(
 
 If an error occurs, the stream will terminate with an exception.
 
-EventSourcingDB sends a heartbeat every second while there are no new events. If neither an event nor a heartbeat arrives for 30 seconds, the connection has stalled, and the stream will terminate with a `HeartbeatTimeoutException`.
+EventSourcingDB sends a heartbeat every second while there are no new events. If nothing arrives for the [stall timeout](#configuring-the-stall-timeout), which defaults to 30 seconds, the connection has stalled, and the stream will terminate with a `HeartbeatTimeoutException`.
 
 *Optionally, you might provide a `CancellationToken`.*
 
