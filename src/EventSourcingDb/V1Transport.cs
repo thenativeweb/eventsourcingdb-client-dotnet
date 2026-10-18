@@ -171,7 +171,10 @@ internal sealed class V1Transport(ServerConnection connection) : IClient
         Logger.LogTrace("Trying to read subjects using url '{Url}'...", readSubjectsUrl);
 
         // The v1 API always reads the subjects below the base subject as well, so a read that is
-        // not recursive keeps only the subject itself.
+        // not recursive keeps only the subject itself, as the server normalizes it: a slash,
+        // followed by the subject without its leading and trailing slashes.
+        var normalizedSubject = "/" + subject.Trim('/');
+
         using var request = new HttpRequestMessage(HttpMethod.Post, readSubjectsUrl);
         request.Content = ServerConnection.CreateJsonContent(new { baseSubject = subject });
 
@@ -193,7 +196,7 @@ internal sealed class V1Transport(ServerConnection connection) : IClient
                         break;
                     }
 
-                    if (readSubject.Name == subject)
+                    if (readSubject.Name == normalizedSubject)
                     {
                         yield return readSubject.Name;
 

@@ -71,6 +71,21 @@ public class ReadSubjectsTests : EventSourcingDbTests
         Assert.Equal([subject], subjectsRead);
     }
 
+    [Theory]
+    [InlineData("/test/1/", "/test/1")]
+    [InlineData("/test/", "/test")]
+    public async Task ReadsTheSubjectItselfAsTheServerNormalizesItIfNotRecursive(string subject, string expectedSubject)
+    {
+        var client = Container!.GetClient();
+        await WriteEventsAsync(client);
+
+        var subjectsRead = await client
+            .ReadSubjectsAsync(subject, new ReadSubjectsOptions(Recursive: false), TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal([expectedSubject], subjectsRead);
+    }
+
     [Fact]
     public async Task ReadsNoSubjectIfNotRecursiveAndTheSubjectDoesNotExist()
     {
@@ -177,6 +192,26 @@ public sealed class ReadSubjectsRequestTests
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal([subject], subjectsRead);
+    }
+
+    [Theory]
+    [InlineData("/test/1/", "/test/1")]
+    [InlineData("/test/", "/test")]
+    [InlineData("/", "/")]
+    public async Task KeepsTheSubjectAsTheServerNormalizesItOfThoseThatTheV1ApiReadsIfNotRecursive(string subject, string expectedSubject)
+    {
+        // The server reads a subject as a slash followed by the subject without its leading and
+        // trailing slashes, and lists it that way.
+        var server = FakeServer.ForApi("v1", _ => FakeServer.Ndjson(
+            new[] { "/", "/test", "/test/1", "/test/1/a" }.Select(readSubject => TestRequests.Item("v1", "subject", $$"""{"subject":"{{readSubject}}"}""")).ToArray()
+        ));
+        var client = server.CreateClient();
+
+        var subjectsRead = await client
+            .ReadSubjectsAsync(subject, new ReadSubjectsOptions(Recursive: false), TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal([expectedSubject], subjectsRead);
     }
 
     [Fact]
