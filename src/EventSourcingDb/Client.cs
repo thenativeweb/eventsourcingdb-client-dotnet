@@ -12,6 +12,7 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using EventSourcingDb.Types;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -56,6 +57,9 @@ public class Client : IClient
     {
     }
 
+    // Typed HttpClient registrations create the client through ActivatorUtilities, which needs to
+    // know which of the constructors that take an HttpClient to use.
+    [ActivatorUtilitiesConstructor]
     public Client(HttpClient httpClient, JsonSerializerOptions? dataSerializerOptions = null, ILogger<Client>? logger = null)
         : this(httpClient, new ClientOptions(), dataSerializerOptions, logger)
     {
