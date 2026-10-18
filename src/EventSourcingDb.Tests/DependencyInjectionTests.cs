@@ -65,6 +65,38 @@ public sealed class DependencyInjectionTests : EventSourcingDbTests
     }
 }
 
+// Registering the client as a typed HttpClient without the factory of AddEventSourcingDb lets
+// ActivatorUtilities pick a constructor, which only works if exactly one of the constructors that
+// take an HttpClient is marked as the one to use.
+public sealed class TypedHttpClientTests
+{
+    [Fact]
+    public void ResolvesTheClientAsATypedHttpClient()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddHttpClient<IClient, Client>(httpClient => httpClient.BaseAddress = new Uri("http://localhost:3000"));
+
+        using var serviceProvider = services.BuildServiceProvider();
+
+        Assert.IsType<Client>(serviceProvider.GetRequiredService<IClient>());
+    }
+
+    [Fact]
+    public void CreatesTheClientFromAnHttpClientThroughActivatorUtilities()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+
+        using var serviceProvider = services.BuildServiceProvider();
+        using var httpClient = new HttpClient();
+
+        var client = ActivatorUtilities.CreateInstance<Client>(serviceProvider, httpClient);
+
+        Assert.Equal(TimeSpan.FromSeconds(30), client.StallTimeout);
+    }
+}
+
 public class RetryOnceAfter(int delayInMs) : DelegatingHandler
 {
     protected override async Task<HttpResponseMessage> SendAsync(
