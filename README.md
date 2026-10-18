@@ -505,13 +505,15 @@ To verify the integrity of an event, call the `VerifyHash` method on the event i
 event.VerifyHash();
 ```
 
+The hash of an event comes in one of two versions. Since version 1.3, EventSourcingDB writes hashes of version 2, which start with the prefix `esdb:hash:v2:`. Events written before keep their hash of version 1, which has no prefix. `VerifyHash` supports both versions. If the hash is of a version this client SDK does not know, the event cannot be verified, and the method throws an `UnsupportedHashVersionException` that names the version.
+
 *Note that this only verifies the hash. If you also want to verify the signature, you can skip this step and call `VerifySignature` directly, which performs a hash verification internally.*
 
 ## Verifying an Event's Signature
 
 To verify the authenticity of an event, call the `VerifySignature` method on the event instance. This requires the public key that matches the private key used for signing on the server.
 
-The method first verifies the event's hash, and then checks the signature. If the hash does not match, it throws a `HashVerificationFailedException`, and if the signature is invalid, a `SignatureVerificationFailedException`. If the event is not signed at all, it throws an `Exception`:
+The method first verifies the event's hash in the same way as `VerifyHash`, and then checks the signature. If the hash does not match, it throws a `HashVerificationFailedException`, and if the signature is invalid, a `SignatureVerificationFailedException`. If the event is not signed at all, it throws an `Exception`:
 
 ```csharp
 var verificationKey = // an ed25519 public key

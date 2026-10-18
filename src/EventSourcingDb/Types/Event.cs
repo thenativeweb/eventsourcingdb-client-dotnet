@@ -42,6 +42,8 @@ public record Event
         _serializerOptions = serializerOptions ?? throw new ArgumentNullException(nameof(serializerOptions));
     }
 
+    private const string HashPrefix = "esdb:hash:";
+
     private readonly string _timeFromServer;
     private readonly JsonSerializerOptions _serializerOptions;
 
@@ -50,6 +52,36 @@ public record Event
     public object? GetData(Type type) => Data.Deserialize(type, _serializerOptions);
 
     public void VerifyHash()
+    {
+        var expectedHash = GetHashVersion() switch
+        {
+            null or "v1" => ComputeHashV1(),
+            "v2" => ComputeHashV2(),
+            var version => throw new UnsupportedHashVersionException($"Hash version '{version}' is not supported."),
+        };
+
+        if (expectedHash != Hash)
+        {
+            throw new HashVerificationFailedException("Hash verification failed.");
+        }
+    }
+
+    // Returns null for a hash of version 1, which has no prefix, and otherwise the version that
+    // the prefix names, such as v2 for esdb:hash:v2:.
+    private string? GetHashVersion()
+    {
+        if (!Hash.StartsWith(HashPrefix, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var version = Hash[HashPrefix.Length..];
+        var separatorIndex = version.IndexOf(':');
+
+        return separatorIndex < 0 ? version : version[..separatorIndex];
+    }
+
+    private string ComputeHashV1()
     {
         var metadata = string.Join(
             "|",
@@ -62,22 +94,41 @@ public record Event
             Type,
             DataContentType
         );
-        var metadataHash = SHA256.HashData(Encoding.UTF8.GetBytes(metadata));
-        var metadataHashHex = BitConverter.ToString(metadataHash).Replace("-", "").ToLowerInvariant();
+        var metadataHashHex = ToHex(SHA256.HashData(Encoding.UTF8.GetBytes(metadata)));
+        var dataHashHex = ToHex(SHA256.HashData(Encoding.UTF8.GetBytes(GetRawData())));
 
-        // The data must be hashed exactly as the server sent it. Serializing it again could escape
-        // characters or format numbers differently, and the hash would no longer match.
-        var dataHash = SHA256.HashData(Encoding.UTF8.GetBytes(Data.GetRawText()));
-        var dataHashHex = BitConverter.ToString(dataHash).Replace("-", "").ToLowerInvariant();
-
-        var finalHash = SHA256.HashData(Encoding.UTF8.GetBytes(metadataHashHex + dataHashHex));
-        var finalHashHex = BitConverter.ToString(finalHash).Replace("-", "").ToLowerInvariant();
-
-        if (finalHashHex != Hash)
-        {
-            throw new HashVerificationFailedException("Hash verification failed.");
-        }
+        return ToHex(SHA256.HashData(Encoding.UTF8.GetBytes(metadataHashHex + dataHashHex)));
     }
+
+    private string ComputeHashV2()
+    {
+        const string prefix = HashPrefix + "v2:";
+        const string missingField = "-";
+
+        var content = string.Join(
+            "\n",
+            prefix,
+            SpecVersion ?? missingField,
+            Id ?? missingField,
+            PredecessorHash ?? missingField,
+            _timeFromServer ?? missingField,
+            Source ?? missingField,
+            Subject ?? missingField,
+            Type ?? missingField,
+            DataContentType ?? missingField,
+            TraceParent ?? missingField,
+            TraceState ?? missingField,
+            Data.ValueKind is JsonValueKind.Undefined ? missingField : GetRawData()
+        );
+
+        return prefix + ToHex(SHA256.HashData(Encoding.UTF8.GetBytes(content)));
+    }
+
+    // The data must be hashed exactly as the server sent it. Serializing it again could escape
+    // characters or format numbers differently, and the hash would no longer match.
+    private string GetRawData() => Data.GetRawText();
+
+    private static string ToHex(byte[] bytes) => Convert.ToHexString(bytes).ToLowerInvariant();
 
     public void VerifySignature(byte[] verificationKey)
     {

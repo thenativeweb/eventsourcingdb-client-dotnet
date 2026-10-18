@@ -106,6 +106,52 @@ public class VerifySignatureTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task VerifiesTheSignatureOfEventsWithTraceContextAndDataASerializerWouldWriteDifferently()
+    {
+        var imageTag = DockerfileHelper.GetImageTag();
+
+        _container = new Container()
+            .WithImageTag(imageTag)
+            .WithSigningKey();
+
+        await _container.StartAsync(TestContext.Current.CancellationToken);
+
+        var client = _container!.GetClient();
+        var verificationKey = _container.GetVerificationKey();
+
+        EventCandidate[] eventCandidates =
+        [
+            new EventCandidate(
+                Source: "https://www.eventsourcingdb.io",
+                Subject: "/test",
+                Type: "io.eventsourcingdb.test",
+                Data: new { title = "2001 – A Space Odyssey", note = "<a&b>" }
+            ),
+            new EventCandidate(
+                Source: "https://www.eventsourcingdb.io",
+                Subject: "/test",
+                Type: "io.eventsourcingdb.test",
+                Data: new EventData(42),
+                TraceParent: "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+                TraceState: "rojo=00f067aa0ba902b7"
+            )
+        ];
+
+        var writtenEvents = await client.WriteEventsAsync(eventCandidates, token: TestContext.Current.CancellationToken);
+        var readEvents = await client
+            .ReadEventsAsync("/test", new ReadEventsOptions(Recursive: false), TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, writtenEvents.Count);
+        Assert.Equal(2, readEvents.Count);
+
+        foreach (var @event in writtenEvents.Concat(readEvents))
+        {
+            @event.VerifySignature(verificationKey);
+        }
+    }
+
+    [Fact]
     public async Task GetSigningKeyReturnsTheKeyTheVerificationKeyBelongsTo()
     {
         var imageTag = DockerfileHelper.GetImageTag();
