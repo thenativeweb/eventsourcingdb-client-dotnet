@@ -2,9 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net.Http;
-using System.Reflection;
 using System.Text;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using EventSourcingDb.DependencyInjection;
@@ -17,42 +15,18 @@ namespace EventSourcingDb.Tests;
 
 public sealed class StallTimeoutTests
 {
-    private const string Event = """{"specversion":"1.0","id":"0","time":"2026-10-03T12:00:00Z","source":"https://www.eventsourcingdb.io","subject":"/test","type":"io.eventsourcingdb.test","datacontenttype":"application/json","data":{"value":23},"hash":"","predecessorhash":""}""";
-
     private static readonly TimeSpan _stallTimeout = TimeSpan.FromMilliseconds(500);
 
     // Ends a request that hangs, so that a test fails instead of waiting forever.
     private static readonly TimeSpan _guardTimeout = TimeSpan.FromSeconds(10);
 
-    public static TheoryData<string> AllRequests =>
-    [
-        "ping",
-        "verify-api-token",
-        "write-events",
-        "register-event-schema",
-        "read-event-type",
-        "read-events",
-        "read-subjects",
-        "read-event-types",
-        "observe-events",
-        "run-eventql-query",
-    ];
+    private static readonly string[] _apiVersions = ["v1", "v2"];
 
-    public static TheoryData<string> RequestsWithASingleResponse =>
-    [
-        "ping",
-        "verify-api-token",
-        "write-events",
-        "register-event-schema",
-        "read-event-type",
-    ];
+    public static TheoryData<string, string> AllRequests => Cross(_apiVersions, TestRequests.All);
 
-    public static TheoryData<string, string> StreamsWithoutHeartbeats => new()
-    {
-        { "read-events", $$"""{"type":"event","payload":{{Event}}}""" },
-        { "read-subjects", """{"type":"subject","payload":{"subject":"/test"}}""" },
-        { "read-event-types", """{"type":"eventType","payload":{"eventType":"io.eventsourcingdb.test","isPhantom":false,"schema":null}}""" },
-    };
+    public static TheoryData<string, string> Streams => Cross(_apiVersions, TestRequests.Streams);
+
+    public static TheoryData<string, string> StreamsWithHeartbeats => Cross(_apiVersions, ["observe-events", "run-eventql-query"]);
 
     [Fact]
     public void UsesAStallTimeoutOfThirtySecondsByDefault()
@@ -101,21 +75,6 @@ public sealed class StallTimeoutTests
         Assert.Equal(TimeSpan.FromSeconds(30), new Client(httpClient, default).StallTimeout);
     }
 
-    [Fact]
-    public async Task FailsAStalledRequestOfACustomHttpClientAfterTheStallTimeout()
-    {
-        await using var server = new StallingTestServer((_, _) => Task.CompletedTask);
-        using var httpClient = new HttpClient { BaseAddress = server.BaseUrl };
-        var client = new Client(httpClient, new ClientOptions { StallTimeout = _stallTimeout }, null, null);
-
-        var stopwatch = Stopwatch.StartNew();
-        var exception = await Assert.ThrowsAsync<TaskCanceledException>(() => RunAsync(client, "ping"));
-        stopwatch.Stop();
-
-        Assert.IsType<ConnectionStalledException>(exception.InnerException);
-        AssertStalledAfterTheStallTimeout(stopwatch.Elapsed);
-    }
-
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
@@ -132,31 +91,47 @@ public sealed class StallTimeoutTests
     {
         var client = new Client(new Uri("http://localhost:3000"), "secret");
 
-        Assert.Equal(Timeout.InfiniteTimeSpan, GetHttpClient(client).Timeout);
+        Assert.Equal(Timeout.InfiniteTimeSpan, client.HttpClient.Timeout);
+    }
+
+    [Fact]
+    public async Task FailsWithAConnectionStalledExceptionIfTheProbeStalls()
+    {
+        await using var server = new StallingTestServer((_, _) => Task.CompletedTask);
+        using var httpClient = new HttpClient { BaseAddress = server.BaseUrl };
+        var client = new Client(httpClient, new ClientOptions { StallTimeout = _stallTimeout }, null, null);
+        using var guard = CreateGuard();
+
+        var stopwatch = Stopwatch.StartNew();
+        var exception = await Assert.ThrowsAsync<ConnectionStalledException>(() => client.PingAsync(guard.Token));
+        stopwatch.Stop();
+
+        Assert.Equal("Nothing arrived from the server for 0.5 seconds.", exception.Message);
+        AssertStalledAfterTheStallTimeout(stopwatch.Elapsed);
     }
 
     [Theory]
     [MemberData(nameof(AllRequests))]
-    public async Task FailsWithATaskCanceledExceptionIfTheResponseHeadersDoNotArrive(string request)
+    public async Task FailsWithAConnectionStalledExceptionIfTheResponseHeadersDoNotArrive(string apiVersion, string request)
     {
         await using var server = new StallingTestServer((_, _) => Task.CompletedTask);
-        var client = new Client(server.BaseUrl, "secret", new ClientOptions { StallTimeout = _stallTimeout });
+        var client = ProbeAnsweringHandler.CreateClient(apiVersion, server.BaseUrl, _stallTimeout);
+        using var guard = CreateGuard();
 
         var stopwatch = Stopwatch.StartNew();
-        var exception = await Assert.ThrowsAsync<TaskCanceledException>(() => RunAsync(client, request));
+        var exception = await Record.ExceptionAsync(() => TestRequests.RunAsync(client, request, guard.Token));
         stopwatch.Stop();
 
-        var innerException = Assert.IsType<ConnectionStalledException>(exception.InnerException);
-        Assert.Equal("The request was canceled, since nothing arrived from the server for 0.5 seconds.", exception.Message);
-        Assert.Equal("Nothing arrived from the server for 0.5 seconds.", innerException.Message);
+        var stalledException = Assert.IsType<ConnectionStalledException>(UnwrapWrite(request, exception));
+        Assert.Equal("Nothing arrived from the server for 0.5 seconds.", stalledException.Message);
         AssertStalledAfterTheStallTimeout(stopwatch.Elapsed);
 
         await server.ConnectionClosed.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
     }
 
     [Theory]
-    [MemberData(nameof(RequestsWithASingleResponse))]
-    public async Task FailsWithATaskCanceledExceptionIfASingleResponseStalls(string request)
+    [MemberData(nameof(AllRequests))]
+    public async Task FailsWithAConnectionStalledExceptionIfTheResponseStallsAfterItsHeaders(string apiVersion, string request)
     {
         await using var server = new StallingTestServer(async (write, _) =>
         {
@@ -169,34 +144,35 @@ public sealed class StallTimeoutTests
                 """{"type":"""
             );
         });
-        var client = new Client(server.BaseUrl, "secret", new ClientOptions { StallTimeout = _stallTimeout });
+        var client = ProbeAnsweringHandler.CreateClient(apiVersion, server.BaseUrl, _stallTimeout);
+        using var guard = CreateGuard();
 
         var stopwatch = Stopwatch.StartNew();
-        var exception = await Assert.ThrowsAsync<TaskCanceledException>(() => RunAsync(client, request));
+        var exception = await Record.ExceptionAsync(() => TestRequests.RunAsync(client, request, guard.Token));
         stopwatch.Stop();
 
-        Assert.IsType<ConnectionStalledException>(exception.InnerException);
+        Assert.IsType<ConnectionStalledException>(UnwrapWrite(request, exception));
         AssertStalledAfterTheStallTimeout(stopwatch.Elapsed);
 
         await server.ConnectionClosed.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
     }
 
     [Theory]
-    [MemberData(nameof(StreamsWithoutHeartbeats))]
-    public async Task FailsWithAConnectionStalledExceptionIfAStreamStalls(string request, string line)
+    [MemberData(nameof(Streams))]
+    public async Task FailsWithAConnectionStalledExceptionIfAStreamStallsAfterAnItem(string apiVersion, string request)
     {
         await using var server = new NdjsonTestServer(async (sendLine, _) =>
         {
-            await sendLine(line);
+            await sendLine(TestRequests.FirstItemOf(apiVersion, request));
         });
-        var client = new Client(server.BaseUrl, "secret", new ClientOptions { StallTimeout = _stallTimeout });
+        var client = ProbeAnsweringHandler.CreateClient(apiVersion, server.BaseUrl, _stallTimeout);
         var itemCount = 0;
         using var guard = CreateGuard();
 
         var stopwatch = Stopwatch.StartNew();
         var exception = await Assert.ThrowsAsync<ConnectionStalledException>(async () =>
         {
-            await foreach (var _ in GetStream(client, request, guard.Token))
+            await foreach (var _ in TestRequests.GetStream(client, request, guard.Token))
             {
                 itemCount++;
             }
@@ -210,10 +186,129 @@ public sealed class StallTimeoutTests
         await server.ConnectionClosed.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
     }
 
-    [Fact]
-    public async Task KeepsASingleResponseAliveWhileItsBytesArrive()
+    [Theory]
+    [MemberData(nameof(StreamsWithHeartbeats))]
+    public async Task FailsWithAConnectionStalledExceptionIfNothingArrivesAfterAHeartbeat(string apiVersion, string request)
     {
-        const string body = """{"type":"io.eventsourcingdb.api.ping-received"}""";
+        await using var server = new NdjsonTestServer(async (sendLine, _) =>
+        {
+            await sendLine(TestRequests.Heartbeat(apiVersion));
+        });
+        var client = ProbeAnsweringHandler.CreateClient(apiVersion, server.BaseUrl, _stallTimeout);
+        using var guard = CreateGuard();
+
+        var stopwatch = Stopwatch.StartNew();
+        await Assert.ThrowsAsync<ConnectionStalledException>(async () =>
+        {
+            await foreach (var _ in TestRequests.GetStream(client, request, guard.Token))
+            {
+            }
+        });
+        stopwatch.Stop();
+
+        AssertStalledAfterTheStallTimeout(stopwatch.Elapsed);
+
+        await server.ConnectionClosed.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+    }
+
+    [Theory]
+    [MemberData(nameof(StreamsWithHeartbeats))]
+    public async Task KeepsAStreamOpenWhileHeartbeatsArrive(string apiVersion, string request)
+    {
+        await using var server = new NdjsonTestServer(async (sendLine, token) =>
+        {
+            for (var i = 0; i < 20; i++)
+            {
+                await sendLine(TestRequests.Heartbeat(apiVersion));
+                await Task.Delay(TimeSpan.FromMilliseconds(100), token);
+            }
+
+            await sendLine(TestRequests.FirstItemOf(apiVersion, request));
+        });
+        var client = ProbeAnsweringHandler.CreateClient(apiVersion, server.BaseUrl, _stallTimeout);
+        using var guard = CreateGuard();
+
+        var items = new List<Event?>();
+        var stopwatch = Stopwatch.StartNew();
+
+        await foreach (var item in TestRequests.GetStream(client, request, guard.Token))
+        {
+            items.Add(item as Event);
+            break;
+        }
+
+        stopwatch.Stop();
+
+        Assert.Equal("0", Assert.Single(items)?.Id);
+        Assert.True(stopwatch.Elapsed > _stallTimeout * 3);
+    }
+
+    [Fact]
+    public async Task KeepsAWriteOpenWhileHeartbeatsArrive()
+    {
+        await using var server = new NdjsonTestServer(async (sendLine, token) =>
+        {
+            for (var i = 0; i < 20; i++)
+            {
+                await sendLine(TestRequests.Heartbeat("v2"));
+                await Task.Delay(TimeSpan.FromMilliseconds(100), token);
+            }
+
+            await sendLine(TestRequests.Event("v2", "0"));
+            await sendLine(TestRequests.End);
+        });
+        var client = ProbeAnsweringHandler.CreateClient("v2", server.BaseUrl, _stallTimeout);
+        using var guard = CreateGuard();
+
+        var stopwatch = Stopwatch.StartNew();
+        var writtenEvents = await client.WriteEventsAsync(
+            [new EventCandidate("https://www.eventsourcingdb.io", "/test", "io.eventsourcingdb.test", new { value = 23 })],
+            token: guard.Token
+        );
+        stopwatch.Stop();
+
+        Assert.Equal("0", Assert.Single(writtenEvents).Id);
+        Assert.True(stopwatch.Elapsed > _stallTimeout * 3);
+    }
+
+    [Theory]
+    [MemberData(nameof(StreamsWithHeartbeats))]
+    public async Task DeliversItemsThatArriveWithinTheTimeout(string apiVersion, string request)
+    {
+        // There are no heartbeats in between, so only the items keep the stream open.
+        await using var server = new NdjsonTestServer(async (sendLine, token) =>
+        {
+            for (var i = 0; i < 5; i++)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(200), token);
+                await sendLine(TestRequests.FirstItemOf(apiVersion, request).Replace("\"id\":\"0\"", $"\"id\":\"{i}\""));
+            }
+        });
+        var client = ProbeAnsweringHandler.CreateClient(apiVersion, server.BaseUrl, _stallTimeout);
+        using var guard = CreateGuard();
+
+        var items = new List<Event?>();
+
+        await foreach (var item in TestRequests.GetStream(client, request, guard.Token))
+        {
+            items.Add(item as Event);
+            if (items.Count >= 5)
+            {
+                break;
+            }
+        }
+
+        Assert.Equal(["0", "1", "2", "3", "4"], items.ConvertAll(item => item?.Id));
+    }
+
+    [Theory]
+    [InlineData("v1")]
+    [InlineData("v2")]
+    public async Task KeepsASingleResponseAliveWhileItsBytesArrive(string apiVersion)
+    {
+        var body = apiVersion == "v1"
+            ? """{"type":"io.eventsourcingdb.api.ping-received"}"""
+            : """{"type":"event","data":{"type":"io.eventsourcingdb.api.ping-received"}}""";
 
         await using var server = new StallingTestServer(async (write, token) =>
         {
@@ -231,8 +326,7 @@ public sealed class StallTimeoutTests
                 await write(character.ToString());
             }
         });
-        var client = new Client(server.BaseUrl, "secret", new ClientOptions { StallTimeout = _stallTimeout });
-
+        var client = ProbeAnsweringHandler.CreateClient(apiVersion, server.BaseUrl, _stallTimeout);
         using var guard = CreateGuard();
 
         var stopwatch = Stopwatch.StartNew();
@@ -243,9 +337,11 @@ public sealed class StallTimeoutTests
     }
 
     [Theory]
-    [InlineData("read-events")]
-    [InlineData("observe-events")]
-    public async Task KeepsAStreamAliveWhileTheBytesOfALineArrive(string request)
+    [InlineData("v1", "read-events")]
+    [InlineData("v1", "observe-events")]
+    [InlineData("v2", "read-events")]
+    [InlineData("v2", "observe-events")]
+    public async Task KeepsAStreamAliveWhileTheBytesOfALineArrive(string apiVersion, string request)
     {
         // Each byte arrives on its own, so the line takes far longer than the stall timeout.
         await using var server = new StallingTestServer(async (write, token) =>
@@ -258,19 +354,18 @@ public sealed class StallTimeoutTests
                 "\r\n"
             );
 
-            foreach (var character in $$"""{"type":"event","payload":{{Event}}}""" + "\n")
+            foreach (var character in TestRequests.Event(apiVersion, "0") + "\n")
             {
                 await Task.Delay(TimeSpan.FromMilliseconds(10), token);
                 await write(NdjsonTestServer.Chunk(character.ToString()));
             }
         });
-        var client = new Client(server.BaseUrl, "secret", new ClientOptions { StallTimeout = _stallTimeout });
-
+        var client = ProbeAnsweringHandler.CreateClient(apiVersion, server.BaseUrl, _stallTimeout);
         using var guard = CreateGuard();
 
         var stopwatch = Stopwatch.StartNew();
         var items = new List<Event?>();
-        await foreach (var item in GetStream(client, request, guard.Token))
+        await foreach (var item in TestRequests.GetStream(client, request, guard.Token))
         {
             items.Add(item as Event);
             break;
@@ -282,10 +377,15 @@ public sealed class StallTimeoutTests
     }
 
     [Theory]
-    [InlineData("ping", false)]
-    [InlineData("ping", true)]
-    [InlineData("read-events", false)]
-    public async Task EndsWithACancellationOfTheCallersTokenIfTheCallerCancelsFirst(string request, bool sendHeaders)
+    [InlineData("v1", "ping", false)]
+    [InlineData("v1", "ping", true)]
+    [InlineData("v1", "read-events", false)]
+    [InlineData("v1", "observe-events", true)]
+    [InlineData("v2", "ping", false)]
+    [InlineData("v2", "ping", true)]
+    [InlineData("v2", "read-events", false)]
+    [InlineData("v2", "observe-events", true)]
+    public async Task EndsWithACancellationOfTheCallersTokenIfTheCallerCancelsFirst(string apiVersion, string request, bool sendHeaders)
     {
         await using var server = new StallingTestServer(async (write, _) =>
         {
@@ -301,22 +401,15 @@ public sealed class StallTimeoutTests
                 );
             }
         });
-        var client = new Client(server.BaseUrl, "secret", new ClientOptions { StallTimeout = TimeSpan.FromSeconds(5) });
+        var client = ProbeAnsweringHandler.CreateClient(apiVersion, server.BaseUrl, TimeSpan.FromSeconds(5));
 
-        using var source = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
+        using var source = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
 
-        var exception = await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
-        {
-            if (request == "ping")
-            {
-                await client.PingAsync(source.Token);
-                return;
-            }
+        var running = TestRequests.RunAsync(client, request, source.Token);
+        await server.RequestReceived.WaitAsync(_guardTimeout, TestContext.Current.CancellationToken);
+        await source.CancelAsync();
 
-            await foreach (var _ in GetStream(client, request, source.Token))
-            {
-            }
-        });
+        var exception = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => running);
 
         // Callers tell their own cancellation apart by its token, as with HttpClient.
         Assert.Equal(source.Token, exception.CancellationToken);
@@ -346,12 +439,11 @@ public sealed class StallTimeoutTests
         var client = (Client)serviceProvider.GetRequiredService<IClient>();
 
         Assert.Equal(_stallTimeout, client.StallTimeout);
-        Assert.Equal(Timeout.InfiniteTimeSpan, GetHttpClient(client).Timeout);
+        Assert.Equal(Timeout.InfiniteTimeSpan, client.HttpClient.Timeout);
 
         using var guard = CreateGuard();
 
-        var exception = await Assert.ThrowsAsync<TaskCanceledException>(() => client.PingAsync(guard.Token));
-        Assert.IsType<ConnectionStalledException>(exception.InnerException);
+        await Assert.ThrowsAsync<ConnectionStalledException>(() => client.PingAsync(guard.Token));
     }
 
     [Fact]
@@ -374,7 +466,7 @@ public sealed class StallTimeoutTests
         using var serviceProvider = services.BuildServiceProvider();
         var client = (Client)serviceProvider.GetRequiredService<IClient>();
 
-        Assert.Equal(TimeSpan.FromSeconds(10), GetHttpClient(client).Timeout);
+        Assert.Equal(TimeSpan.FromSeconds(10), client.HttpClient.Timeout);
     }
 
     [Fact]
@@ -397,7 +489,34 @@ public sealed class StallTimeoutTests
         using var serviceProvider = services.BuildServiceProvider();
         var client = (Client)serviceProvider.GetRequiredService<IClient>();
 
-        Assert.Equal(TimeSpan.FromSeconds(5), GetHttpClient(client).Timeout);
+        Assert.Equal(TimeSpan.FromSeconds(5), client.HttpClient.Timeout);
+    }
+
+    // A write that stalls may have been stored, so it fails with an OutcomeUnknownException that
+    // holds the stall.
+    private static Exception? UnwrapWrite(string request, Exception? exception)
+    {
+        if (Array.IndexOf(TestRequests.Writes, request) < 0)
+        {
+            return exception;
+        }
+
+        return Assert.IsType<OutcomeUnknownException>(exception).InnerException;
+    }
+
+    private static TheoryData<string, string> Cross(string[] apiVersions, string[] requests)
+    {
+        var data = new TheoryData<string, string>();
+
+        foreach (var apiVersion in apiVersions)
+        {
+            foreach (var request in requests)
+            {
+                data.Add(apiVersion, request);
+            }
+        }
+
+        return data;
     }
 
     private static CancellationTokenSource CreateGuard()
@@ -412,58 +531,5 @@ public sealed class StallTimeoutTests
     {
         // Timers may fire a few milliseconds early, depending on the resolution of the clock.
         Assert.InRange(elapsed, _stallTimeout - TimeSpan.FromMilliseconds(50), TimeSpan.FromSeconds(5));
-    }
-
-    private static HttpClient GetHttpClient(Client client)
-    {
-        return (HttpClient)typeof(Client)
-            .GetField("_httpClient", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(client)!;
-    }
-
-    private static async Task RunAsync(Client client, string request)
-    {
-        using var guard = CreateGuard();
-        var token = guard.Token;
-
-        switch (request)
-        {
-            case "ping":
-                await client.PingAsync(token);
-                break;
-            case "verify-api-token":
-                await client.VerifyApiTokenAsync(token);
-                break;
-            case "write-events":
-                await client.WriteEventsAsync(
-                    [new EventCandidate("https://www.eventsourcingdb.io", "/test", "io.eventsourcingdb.test", new { value = 23 })],
-                    token: token
-                );
-                break;
-            case "register-event-schema":
-                await client.RegisterEventSchemaAsync("io.eventsourcingdb.test", JsonDocument.Parse("{}").RootElement, token);
-                break;
-            case "read-event-type":
-                await client.ReadEventTypeAsync("io.eventsourcingdb.test", token);
-                break;
-            default:
-                await foreach (var _ in GetStream(client, request, token))
-                {
-                }
-                break;
-        }
-    }
-
-    private static IAsyncEnumerable<object?> GetStream(Client client, string request, CancellationToken token)
-    {
-        return request switch
-        {
-            "read-events" => client.ReadEventsAsync("/", new ReadEventsOptions(Recursive: true), token),
-            "read-subjects" => client.ReadSubjectsAsync("/", token),
-            "read-event-types" => client.ReadEventTypesAsync(token),
-            "observe-events" => client.ObserveEventsAsync("/", new ObserveEventsOptions(Recursive: true), token),
-            "run-eventql-query" => client.RunEventQlQueryAsync<Event>("FROM e IN events PROJECT INTO e", token),
-            _ => throw new ArgumentOutOfRangeException(nameof(request), request, "Unknown request."),
-        };
     }
 }

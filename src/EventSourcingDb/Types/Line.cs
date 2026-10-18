@@ -2,6 +2,7 @@ using System.Text.Json;
 
 namespace EventSourcingDb.Types;
 
+// An item of a stream of the v1 API.
 internal record Line(string Type, JsonElement Payload);
 
 internal static class LineExtensions
@@ -24,11 +25,16 @@ internal static class LineExtensions
         }
     }
 
-    public static void ThrowIfNotExpectedError(this Line line)
+    // The v1 API describes an error within a stream as {"error": "..."}.
+    public static string GetErrorDescription(this Line line)
     {
-        if (line.Payload.ValueKind is not JsonValueKind.String)
+        if (line.Payload.ValueKind is JsonValueKind.Object &&
+            line.Payload.TryGetProperty("error", out var error) &&
+            error.ValueKind is JsonValueKind.String)
         {
-            throw new InvalidValueException($"Received line of type 'error', but payload is not a string: '{line.Payload}'.");
+            return error.GetString()!;
         }
+
+        throw new InvalidValueException($"Received line of type 'error', but its payload holds no error: '{line.Payload}'.");
     }
 }

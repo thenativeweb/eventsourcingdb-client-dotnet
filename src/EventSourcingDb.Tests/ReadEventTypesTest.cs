@@ -52,12 +52,12 @@ public class ReadEventTypesTest : EventSourcingDbTests
         Assert.Equal(2, eventTypesRead.Count);
         Assert.Equal(eventTypesRead[0], new EventType(
             Type: "io.eventsourcingdb.v1.test",
-            IsPhantom: false,
+            HasEvents: true,
             Schema: null
         ));
         Assert.Equal(eventTypesRead[1], new EventType(
             Type: "io.eventsourcingdb.v2.test",
-            IsPhantom: false,
+            HasEvents: true,
             Schema: null
         ));
     }
@@ -93,7 +93,7 @@ public class ReadEventTypesTest : EventSourcingDbTests
         Assert.Collection(eventTypesRead, type =>
         {
             Assert.Equal(eventType, type.Type);
-            Assert.True(type.IsPhantom);
+            Assert.False(type.HasEvents);
             Assert.NotNull(type.Schema);
             Assert.True(JsonElementComparer.Equals(type.Schema.Value, schema));
         });

@@ -1,10 +1,12 @@
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace EventSourcingDb.Types;
 
+/// <summary>
+/// An event type, whether it has events, and the schema registered for it, if any.
+/// </summary>
 public record EventType(
-    [property: JsonPropertyName("eventType")] string Type,
-    bool IsPhantom,
+    string Type,
+    bool HasEvents,
     JsonElement? Schema
 );

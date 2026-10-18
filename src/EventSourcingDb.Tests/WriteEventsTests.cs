@@ -1,6 +1,4 @@
 using System.Linq;
-using System.Net;
-using System.Net.Http;
 using System.Threading.Tasks;
 using EventSourcingDb.Types;
 using Xunit;
@@ -124,7 +122,7 @@ public class WriteEventsTests : EventSourcingDbTests
 
         await client.WriteEventsAsync([firstEvent], token: TestContext.Current.CancellationToken);
 
-        var error = await Assert.ThrowsAsync<HttpRequestException>(async () =>
+        var error = await Assert.ThrowsAsync<DbApiException>(async () =>
             await client.WriteEventsAsync(
                 [secondEvent],
                 [Precondition.IsSubjectPristinePrecondition("/test")],
@@ -132,7 +130,7 @@ public class WriteEventsTests : EventSourcingDbTests
             )
         );
 
-        Assert.Equal(HttpStatusCode.Conflict, error.StatusCode);
+        Assert.Equal(ErrorCodes.PreconditionViolated, error.Code);
     }
 
     [Fact]
@@ -156,7 +154,7 @@ public class WriteEventsTests : EventSourcingDbTests
             Data: secondData
         );
 
-        var error = await Assert.ThrowsAsync<HttpRequestException>(async () =>
+        var error = await Assert.ThrowsAsync<DbApiException>(async () =>
             await client.WriteEventsAsync(
                 [secondEvent],
                 [Precondition.IsSubjectPopulatedPrecondition("/test")],
@@ -164,7 +162,7 @@ public class WriteEventsTests : EventSourcingDbTests
             )
         );
 
-        Assert.Equal(HttpStatusCode.Conflict, error.StatusCode);
+        Assert.Equal(ErrorCodes.PreconditionViolated, error.Code);
 
         await client.WriteEventsAsync([firstEvent], token: TestContext.Current.CancellationToken);
 
@@ -201,7 +199,7 @@ public class WriteEventsTests : EventSourcingDbTests
 
         await client.WriteEventsAsync([firstEvent], token: TestContext.Current.CancellationToken);
 
-        var error = await Assert.ThrowsAsync<HttpRequestException>(async () =>
+        var error = await Assert.ThrowsAsync<DbApiException>(async () =>
             await client.WriteEventsAsync(
                 [secondEvent],
                 [Precondition.IsSubjectOnEventIdPrecondition("/test", "1")],
@@ -209,7 +207,7 @@ public class WriteEventsTests : EventSourcingDbTests
             )
         );
 
-        Assert.Equal(HttpStatusCode.Conflict, error.StatusCode);
+        Assert.Equal(ErrorCodes.PreconditionViolated, error.Code);
     }
 
     [Fact]
@@ -235,7 +233,7 @@ public class WriteEventsTests : EventSourcingDbTests
 
         await client.WriteEventsAsync([firstEvent], token: TestContext.Current.CancellationToken);
 
-        var error = await Assert.ThrowsAsync<HttpRequestException>(async () =>
+        var error = await Assert.ThrowsAsync<DbApiException>(async () =>
             await client.WriteEventsAsync(
                 [secondEvent],
                 [Precondition.IsEventQlQueryTruePrecondition("FROM e IN events PROJECT INTO COUNT() == 0")],
@@ -243,7 +241,7 @@ public class WriteEventsTests : EventSourcingDbTests
             )
         );
 
-        Assert.Equal(HttpStatusCode.Conflict, error.StatusCode);
+        Assert.Equal(ErrorCodes.PreconditionViolated, error.Code);
     }
 
     [Fact]
@@ -282,7 +280,7 @@ public class WriteEventsTests : EventSourcingDbTests
 
         var writeEvents = () => client.WriteEventsAsync([eventCandidate], token: TestContext.Current.CancellationToken);
 
-        var ex = await Assert.ThrowsAsync<HttpRequestException>(writeEvents);
+        var ex = await Assert.ThrowsAsync<DbApiException>(writeEvents);
 
         Assert.Contains("subject", ex.Message);
     }

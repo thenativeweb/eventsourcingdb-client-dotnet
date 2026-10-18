@@ -8,6 +8,8 @@ For more information on EventSourcingDB, see its [official documentation](https:
 
 This client SDK includes support for [Testcontainers](https://testcontainers.com/) to spin up EventSourcingDB instances in integration tests. For details, see [Using Testcontainers](#using-testcontainers).
 
+If you are upgrading from version 1.x of this client SDK, see [Upgrading from 1.x](#upgrading-from-1x).
+
 ## Getting Started
 
 Install the client SDK:
@@ -45,6 +47,75 @@ await client.VerifyApiTokenAsync();
 
 Optionally, you might provide a `CancellationToken`.
 
+### Choosing the API
+
+The client SDK works with servers that offer the v2 API of EventSourcingDB, which EventSourcingDB offers since version 1.3, and with servers that only offer the v1 API. Creating a client does not make any request. Instead, the first request of a client finds out which API the server offers, by sending a `GET` request to `/api/v2/system/ping`, and the client remembers the answer for all of its following requests. If this fails, for example because the server is not reachable, the first request fails with that error, and the next request tries again.
+
+*Note that with dependency injection, every resolved `IClient` is a client of its own. The clients of one call to `AddEventSourcingDb` share the answer, so only the first request of the first of them finds out the API.*
+
+On servers that offer the v2 API, all reading requests use the HTTP method `QUERY` ([RFC 10008](https://www.rfc-editor.org/rfc/rfc10008)). If there is a proxy, a load balancer, or a firewall in front of EventSourcingDB, it has to let `QUERY` requests through. There is no fallback to `POST`.
+
+### Handling Errors
+
+Every error that EventSourcingDB reports results in a `DbApiException`, whether the server refuses a request with an HTTP status code or reports the error within its response. It offers:
+
+- `Code`, the code of the error exactly as the server sends it, which is the URL of the page that documents the error, such as `https://docs.eventsourcingdb.io/errors/precondition-violated`. It is `null` for errors without a code.
+- `Description`, the description of the error.
+- `Details`, the details of the error as a `JsonElement`, or `null` for errors without details.
+- `Status`, the HTTP status of the response, which is `200` for an error that the server reports within its response.
+- `RetryAfter`, for a status of `429`, how long to wait before trying again, as the `Retry-After` header tells it, or `null`.
+
+The `ErrorCodes` class contains a constant for every code, so you can tell errors apart without comparing strings yourself:
+
+```csharp
+try
+{
+    await client.WriteEventsAsync(
+        new[] { @event },
+        new[] { Precondition.IsSubjectPristinePrecondition("/books/42") }
+    );
+}
+catch (DbApiException exception) when (exception.Code == ErrorCodes.PreconditionViolated)
+{
+    // The precondition does not hold.
+}
+```
+
+Servers that only offer the v1 API report errors without a code. For those that clearly match an error of the v2 API, the client SDK sets the code of the v2 API: `ErrorCodes.PreconditionViolated` for a precondition that does not hold, `ErrorCodes.CapacityExceeded` for a store that is full, `ErrorCodes.EventSchemaViolated` for an event, or an existing event, that does not match a schema, `ErrorCodes.EventSchemaAlreadyRegistered`, `ErrorCodes.RangeUnsatisfiable` for a `FromLatestEvent` beyond the `UpperBound`, `ErrorCodes.EventTypeUnknown`, `ErrorCodes.StoreReadOnly`, and `ErrorCodes.LicenseInvalid`. All other errors of the v1 API have no code.
+
+The client SDK never repeats a request on its own, not even after a status of `429`.
+
+#### Knowing Whether a Write Was Stored
+
+EventSourcingDB never stops a write halfway, so a write whose response is lost may have been stored nonetheless. If `WriteEventsAsync` or `RegisterEventSchemaAsync` fails in a way that leaves open whether the server stored the write, it fails with an `OutcomeUnknownException`, whose `InnerException` is the cause. This happens, for example, if the connection stalls or breaks after the request was sent, if you cancel the request after it was sent, if the response ends before it is complete, or if the server fails unexpectedly, such as with a status of `500`. Before repeating such a write, find out whether it was stored, for example by reading the events of its subject.
+
+A write is certainly not stored, and fails with the error itself, only if the connection could not be established at all, so that nothing of the request was sent (for example, because the host name could not be resolved, the connection was refused, TLS failed, or the request stalled or was cancelled while connecting), or if the server explicitly refused the write, for example because a precondition does not hold:
+
+```csharp
+try
+{
+    await client.WriteEventsAsync(new[] { @event });
+}
+catch (OutcomeUnknownException)
+{
+    // The events may have been written. Check before writing them again.
+}
+```
+
+A refusal only tells about the attempt that it answers. The client SDK sees how often a write was sent only through the body that it hands to the `HttpClient`. If a handler sends that body more than once, or reads it into a buffer or as a stream, after which the client SDK cannot count the attempts any more, every failure of the write is an `OutcomeUnknownException`, a refusal included. So a handler that only reads the body, such as one that logs it, turns even a single refusal into an `OutcomeUnknownException`. What the client SDK cannot see is a handler that copies the body once, for example into a `ByteArrayContent` of its own, and sends that copy again: a refusal of such a second attempt is a `DbApiException`, although the first attempt may have been stored.
+
+*Note that a handler that retries requests can store a write twice: the first attempt is stored but its response is lost, and the second attempt succeeds as well. So the protection is not to retry writes at all. If you use the standard resilience handler of `Microsoft.Extensions.Http.Resilience`, for the EventSourcingDB client or for all clients, as the service defaults of .NET Aspire do, turn off its retries for writes:*
+
+```csharp
+// For the EventSourcingDB client.
+builder.Services.AddEventSourcingDb(builder.Configuration)
+    .AddStandardResilienceHandler(options => options.Retry.DisableForUnsafeHttpMethods());
+
+// For all clients.
+builder.Services.ConfigureHttpClientDefaults(http =>
+    http.AddStandardResilienceHandler(options => options.Retry.DisableForUnsafeHttpMethods()));
+```
+
 ### Configuring the Stall Timeout
 
 If the connection to EventSourcingDB stalls, for example behind a proxy that keeps it open but no longer passes anything on, a request fails once nothing at all has arrived from the server for the stall timeout. This applies to every request, from sending it until its end, including connecting and waiting for the response. Everything that arrives starts the time anew, so a long stream that keeps receiving events or heartbeats is never cut off.
@@ -58,11 +129,7 @@ var client = new Client(url, apiToken, new ClientOptions
 });
 ```
 
-When a request stalls, it fails:
-
-- while waiting for the response, and while reading the response of a method that does not return a stream, with a `TaskCanceledException`, whose `InnerException` is a `ConnectionStalledException`,
-- while reading the stream of `ObserveEventsAsync` or `RunEventQlQueryAsync`, with a `HeartbeatTimeoutException`,
-- while reading the stream of `ReadEventsAsync`, `ReadSubjectsAsync`, or `ReadEventTypesAsync`, with a `ConnectionStalledException`.
+When a request stalls, it fails with a `ConnectionStalledException`, whether while connecting, while waiting for the response, or while reading it. A write that stalls after it was sent may have been stored nonetheless, so `WriteEventsAsync` and `RegisterEventSchemaAsync` wrap such a stall in an [`OutcomeUnknownException`](#knowing-whether-a-write-was-stored). A write that stalls while connecting was not sent, so it fails with the `ConnectionStalledException` itself.
 
 `ConnectionStalledException` derives from `TimeoutException`. A `CancellationToken` that you pass to a method can still cancel a request earlier.
 
@@ -260,7 +327,7 @@ await foreach (var @event in client.ReadEventsAsync(
 }
 ```
 
-If an error occurs, the stream will terminate with an exception.
+If an error occurs, the stream will terminate with an exception, a [`DbApiException`](#handling-errors) for an error that the server reports. On servers that offer the v2 API, a stream that breaks off before EventSourcingDB has sent all events terminates with an `HttpIOException`. The same applies to `ReadSubjectsAsync`, `ReadEventTypesAsync`, and `RunEventQlQueryAsync`.
 
 *Optionally, you might provide a `CancellationToken`.*
 
@@ -367,7 +434,7 @@ await foreach (var row in client.RunEventQlQueryAsync<Event>(
 
 Each row is deserialized automatically and returned as `TRow`, according to your projection. Ensure your projection matches the shape of `TRow`.
 
-EventSourcingDB sends a heartbeat every second while there are no rows to send. If nothing arrives for the [stall timeout](#configuring-the-stall-timeout), which defaults to 30 seconds, the connection has stalled, and the stream will terminate with a `HeartbeatTimeoutException`.
+EventSourcingDB sends a heartbeat every second while there are no rows to send. If nothing arrives for the [stall timeout](#configuring-the-stall-timeout), which defaults to 30 seconds, the connection has stalled, and the stream will terminate with a `ConnectionStalledException`.
 
 *Optionally, you might provide a `CancellationToken`.*
 
@@ -386,9 +453,9 @@ await foreach (var @event in client.ObserveEventsAsync(
 }
 ```
 
-If an error occurs, the stream will terminate with an exception.
+If an error occurs, the stream will terminate with an exception, a [`DbApiException`](#handling-errors) for an error that the server reports. Observing never ends on its own, so if the server closes the stream without an error, it terminates with an `HttpIOException`.
 
-EventSourcingDB sends a heartbeat every second while there are no new events. If nothing arrives for the [stall timeout](#configuring-the-stall-timeout), which defaults to 30 seconds, the connection has stalled, and the stream will terminate with a `HeartbeatTimeoutException`.
+EventSourcingDB sends a heartbeat every second while there are no new events. If nothing arrives for the [stall timeout](#configuring-the-stall-timeout), which defaults to 30 seconds, the connection has stalled, and the stream will terminate with a `ConnectionStalledException`.
 
 *Optionally, you might provide a `CancellationToken`.*
 
@@ -490,11 +557,13 @@ await client.RegisterEventSchemaAsync(
 );
 ```
 
+If a schema is already registered for the event type, the method throws a `DbApiException` with the code `ErrorCodes.EventSchemaAlreadyRegistered`.
+
 *Optionally, you might provide a `CancellationToken`.*
 
 ## Listing Event Types
 
-To list all event types, call the `ReadEventTypesAsync` method. The method returns an async stream:
+To list all event types, call the `ReadEventTypesAsync` method. The method returns an async stream of `EventType` instances, each with the event type as `Type`, whether there are events of the type as `HasEvents`, and the registered schema, if any, as `Schema`:
 
 ```csharp
 await foreach (var eventType in client.ReadEventTypesAsync())
@@ -511,21 +580,38 @@ To list a specific event type, call the `ReadEventTypeAsync` method with the eve
 var eventType = await client.ReadEventTypeAsync("io.eventsourcingdb.library.book-acquired");
 ```
 
+If the event type has neither events nor a registered schema, the method throws a `DbApiException` with the code `ErrorCodes.EventTypeUnknown`.
+
 ## Listing Subjects
 
-To list all subjects, call the `ReadSubjectsAsync` method with `/` as the base subject. The method returns an async stream:
+To list subjects, call the `ReadSubjectsAsync` method with a subject and an options object, in which you must decide whether to read recursively. To list all subjects, use `/` as the subject and set `Recursive` to `true`. The method returns an async stream:
 
 ```csharp
-await foreach (var eventType in client.ReadSubjectsAsync("/"))
+await foreach (var subject in client.ReadSubjectsAsync(
+    "/",
+    new ReadSubjectsOptions(Recursive: true)))
 {
     // ...
 }
 ```
 
-If you only want to list subjects within a specific branch, provide the desired base subject instead:
+If you only want to list the subjects within a specific branch, provide the subject of the branch instead:
 
 ```csharp
-await foreach (var eventType in client.ReadSubjectsAsync("/books"))
+await foreach (var subject in client.ReadSubjectsAsync(
+    "/books",
+    new ReadSubjectsOptions(Recursive: true)))
+{
+    // ...
+}
+```
+
+With `Recursive` set to `false`, the stream contains only the given subject itself, if it exists:
+
+```csharp
+await foreach (var subject in client.ReadSubjectsAsync(
+    "/books/42",
+    new ReadSubjectsOptions(Recursive: false)))
 {
     // ...
 }
@@ -644,3 +730,97 @@ In case you need to set up the client yourself, use the following methods to get
 - `GetMappedPort()` returns the port
 - `GetBaseUrl()` returns the full URL of the container
 - `GetApiToken()` returns the API token
+
+## Upgrading from 1.x
+
+Version 2.0 of this client SDK speaks the v2 API of EventSourcingDB as well as the v1 API, and [chooses](#choosing-the-api) between them on the first request of a client. On servers that offer the v2 API, reading requests use the HTTP method `QUERY`, which a proxy in front of EventSourcingDB has to let through. Besides that, the following changes break code written for version 1.x:
+
+- **`ReadSubjectsAsync` takes a subject and required options.** The parameter `baseSubject` is now `subject`, and you have to decide whether to read recursively. Version 1.x always read recursively.
+
+  ```csharp
+  // Before
+  client.ReadSubjectsAsync("/books");
+
+  // After
+  client.ReadSubjectsAsync("/books", new ReadSubjectsOptions(Recursive: true));
+  ```
+
+- **`EventType` tells whether an event type has events, instead of whether it is a phantom.** `IsPhantom` is replaced by its opposite, `HasEvents`, also in the constructor. When serialized to JSON, the event type is now named `type` instead of `eventType`.
+
+  ```csharp
+  // Before
+  if (eventType.IsPhantom) { /* ... */ }
+
+  // After
+  if (!eventType.HasEvents) { /* ... */ }
+  ```
+
+- **Errors that the server reports are `DbApiException`s.** Version 1.x threw an `HttpRequestException` with the status as `StatusCode` and the text within its message, and a plain `Exception` for an error within a stream. See [Handling Errors](#handling-errors).
+
+  ```csharp
+  // Before
+  catch (HttpRequestException exception) when (exception.StatusCode == HttpStatusCode.Conflict) { /* ... */ }
+
+  // After
+  catch (DbApiException exception) when (exception.Code == ErrorCodes.PreconditionViolated) { /* ... */ }
+  ```
+
+- **A write that may have been stored fails with an `OutcomeUnknownException`.** If `WriteEventsAsync` or `RegisterEventSchemaAsync` fails in a way that leaves open whether the write was stored, the original exception, such as a `ConnectionStalledException`, an `HttpRequestException`, or the `OperationCanceledException` of a cancellation after the request was sent, is now the `InnerException` of an `OutcomeUnknownException`. See [Knowing Whether a Write Was Stored](#knowing-whether-a-write-was-stored).
+
+  ```csharp
+  // Before
+  catch (OperationCanceledException) { /* ... */ }
+
+  // After
+  catch (OutcomeUnknownException exception) when (exception.InnerException is OperationCanceledException) { /* ... */ }
+  ```
+
+- **An observation that the server closes fails.** Version 1.x ended the stream of `ObserveEventsAsync` quietly if the server closed it, which it only does after an unexpected failure. Now the stream terminates with an `HttpIOException`, as a stream of the v2 API that breaks off before its end does.
+
+  ```csharp
+  // Before
+  await foreach (var @event in client.ObserveEventsAsync("/books", options)) { /* ... */ }
+  // The observation has ended.
+
+  // After
+  try
+  {
+      await foreach (var @event in client.ObserveEventsAsync("/books", options)) { /* ... */ }
+  }
+  catch (HttpIOException)
+  {
+      // The server closed the observation, so observe again.
+  }
+  ```
+
+- **`HeartbeatTimeoutException` is gone.** A stalled stream of `ObserveEventsAsync` or `RunEventQlQueryAsync` now fails with a `ConnectionStalledException`, as every other stalled request does.
+
+  ```csharp
+  // Before
+  catch (HeartbeatTimeoutException) { /* ... */ }
+
+  // After
+  catch (ConnectionStalledException) { /* ... */ }
+  ```
+
+- **A stall always fails with a `ConnectionStalledException`.** Version 1.x threw a `TaskCanceledException` with a `ConnectionStalledException` as its `InnerException` if the response did not begin, or if a response that is no stream stalled.
+
+  ```csharp
+  // Before
+  catch (TaskCanceledException exception) when (exception.InnerException is ConnectionStalledException) { /* ... */ }
+
+  // After
+  catch (ConnectionStalledException) { /* ... */ }
+  ```
+
+- **`ReadEventTypeAsync` and `RegisterEventSchemaAsync` check that the response comes from EventSourcingDB**, as all other methods already did, and otherwise throw an `InvalidOperationException`.
+
+- **`HttpResponseExtensions.ThrowIfNotSuccessStatusCode` is no longer public.** It threw an `HttpRequestException` for any status other than `200`, while the client SDK reports such errors as `DbApiException`s. To check a response of your own, compare its `StatusCode`.
+
+  ```csharp
+  // Before
+  await response.ThrowIfNotSuccessStatusCode();
+
+  // After
+  if (response.StatusCode != HttpStatusCode.OK) { /* ... */ }
+  ```

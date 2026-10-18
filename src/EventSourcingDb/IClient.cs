@@ -6,6 +6,12 @@ using EventSourcingDb.Types;
 
 namespace EventSourcingDb;
 
+/// <summary>
+/// A client for EventSourcingDB. Every error that the server reports fails with a
+/// <see cref="DbApiException"/>, and every request fails with a
+/// <see cref="ConnectionStalledException"/> once nothing arrives from the server for the stall
+/// timeout.
+/// </summary>
 public interface IClient
 {
     /// <summary>
@@ -20,6 +26,7 @@ public interface IClient
 
     /// <summary>
     /// Writes one or more events to the event store. According to the preconditions, either all or none of the events are written.
+    /// If the write fails in a way that leaves open whether the events were stored, it fails with an <see cref="OutcomeUnknownException"/>.
     /// </summary>
     Task<IReadOnlyList<Event>> WriteEventsAsync(
         IEnumerable<EventCandidate> events,
@@ -37,10 +44,11 @@ public interface IClient
     );
 
     /// <summary>
-    /// Reads subjects recursively, starting from a base subject.
+    /// Reads the given subject, if it exists, and with <see cref="ReadSubjectsOptions.Recursive"/> set, all subjects below it as well.
     /// </summary>
     IAsyncEnumerable<string> ReadSubjectsAsync(
-        string baseSubject,
+        string subject,
+        ReadSubjectsOptions options,
         CancellationToken token = default
     );
 
@@ -71,6 +79,7 @@ public interface IClient
     /// <summary>
     /// Registers a new event schema for a given event type.
     /// If a schema for the event type already exists, an error is returned.
+    /// If the registration fails in a way that leaves open whether the schema was stored, it fails with an <see cref="OutcomeUnknownException"/>.
     /// </summary>
     Task RegisterEventSchemaAsync(
         string eventType,
