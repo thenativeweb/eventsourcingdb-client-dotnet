@@ -258,6 +258,21 @@ public sealed class OutcomeUnknownTests
         Assert.Equal(requestCount, server.Requests.Count);
     }
 
+    [Theory]
+    [InlineData("v1")]
+    [InlineData("v2")]
+    public async Task ReportsARegistrationWhoseBodyCannotBeBuiltAsNotStored(string apiVersion)
+    {
+        var server = FakeServer.ForApi(apiVersion, _ => throw new InvalidOperationException("No request expected."));
+        var client = server.CreateClient();
+
+        // A JsonElement that is not set cannot be serialized, so nothing can be sent.
+        var exception = await Record.ExceptionAsync(() => client.RegisterEventSchemaAsync("io.eventsourcingdb.test", default, TestContext.Current.CancellationToken));
+
+        Assert.IsType<InvalidOperationException>(exception);
+        Assert.All(server.Requests, request => Assert.True(FakeServer.IsProbe(request)));
+    }
+
     // The following cases run over real connections, to a server that answers the probe of the
     // client in the process and every other request over the network.
 

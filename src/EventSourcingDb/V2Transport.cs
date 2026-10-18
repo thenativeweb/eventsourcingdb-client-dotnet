@@ -85,10 +85,14 @@ internal sealed class V2Transport(ServerConnection connection) : IClient
                 .Select(e => e with { Data = JsonSerializer.SerializeToElement(e.Data, DataSerializerOptions) })
                 .ToArray();
 
+            // The body is built before the request is sent, so that a failure to build it is no
+            // failure of the write, which is certainly not stored then.
+            using var content = ServerConnection.CreateJsonContent(new { events = candidatesWithSerializedData, preconditions });
+
             var result = await WriteOutcome.GuardAsync(async () =>
             {
                 using var request = new HttpRequestMessage(HttpMethod.Post, writeEventsUrl);
-                request.Content = ServerConnection.CreateJsonContent(new { events = candidatesWithSerializedData, preconditions });
+                request.Content = content;
 
                 var writtenEvents = new List<Event>();
                 await foreach (var item in ReadItemsAsync(request, token).ConfigureAwait(false))
@@ -257,10 +261,14 @@ internal sealed class V2Transport(ServerConnection connection) : IClient
 
         Logger.LogTrace("Trying to register event schema using url '{Url}'...", registerEventSchemaUrl);
 
+        // The body is built before the request is sent, so that a failure to build it is no
+        // failure of the write, which is certainly not stored then.
+        using var content = ServerConnection.CreateJsonContent(new { type = eventType, schema });
+
         await WriteOutcome.GuardAsync(async () =>
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, registerEventSchemaUrl);
-            request.Content = ServerConnection.CreateJsonContent(new { type = eventType, schema });
+            request.Content = content;
 
             await foreach (var item in ReadItemsAsync(request, token).ConfigureAwait(false))
             {

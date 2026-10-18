@@ -95,10 +95,14 @@ internal sealed class V1Transport(ServerConnection connection) : IClient
                 .Select(e => e with { Data = JsonSerializer.SerializeToElement(e.Data, DataSerializerOptions) })
                 .ToArray();
 
+            // The body is built before the request is sent, so that a failure to build it is no
+            // failure of the write, which is certainly not stored then.
+            using var content = ServerConnection.CreateJsonContent(new { events = candidatesWithSerializedData, preconditions });
+
             var result = await WriteOutcome.GuardAsync(async () =>
             {
                 using var request = new HttpRequestMessage(HttpMethod.Post, writeEventsUrl);
-                request.Content = ServerConnection.CreateJsonContent(new { events = candidatesWithSerializedData, preconditions });
+                request.Content = content;
 
                 using var response = await connection.SendAsync(request, HttpCompletionOption.ResponseContentRead, token).ConfigureAwait(false);
                 await ThrowIfNotOkAsync(response, V1Request.WriteEvents, token).ConfigureAwait(false);
@@ -295,10 +299,14 @@ internal sealed class V1Transport(ServerConnection connection) : IClient
 
         Logger.LogTrace("Trying to register event schema using url '{Url}'...", registerEventSchemaUrl);
 
+        // The body is built before the request is sent, so that a failure to build it is no
+        // failure of the write, which is certainly not stored then.
+        using var content = ServerConnection.CreateJsonContent(new { eventType, schema });
+
         await WriteOutcome.GuardAsync(async () =>
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, registerEventSchemaUrl);
-            request.Content = ServerConnection.CreateJsonContent(new { eventType, schema });
+            request.Content = content;
 
             using var response = await connection.SendAsync(request, HttpCompletionOption.ResponseContentRead, token).ConfigureAwait(false);
             await ThrowIfNotOkAsync(response, V1Request.RegisterEventSchema, token).ConfigureAwait(false);
