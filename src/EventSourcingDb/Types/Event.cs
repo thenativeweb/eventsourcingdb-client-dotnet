@@ -65,7 +65,9 @@ public record Event
         var metadataHash = SHA256.HashData(Encoding.UTF8.GetBytes(metadata));
         var metadataHashHex = BitConverter.ToString(metadataHash).Replace("-", "").ToLowerInvariant();
 
-        var dataHash = SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(Data));
+        // The data must be hashed exactly as the server sent it. Serializing it again could escape
+        // characters or format numbers differently, and the hash would no longer match.
+        var dataHash = SHA256.HashData(Encoding.UTF8.GetBytes(Data.GetRawText()));
         var dataHashHex = BitConverter.ToString(dataHash).Replace("-", "").ToLowerInvariant();
 
         var finalHash = SHA256.HashData(Encoding.UTF8.GetBytes(metadataHashHex + dataHashHex));

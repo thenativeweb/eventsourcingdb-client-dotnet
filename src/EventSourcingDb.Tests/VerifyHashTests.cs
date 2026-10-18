@@ -29,6 +29,27 @@ public class VerifyHashTests : EventSourcingDbTests
     }
 
     [Fact]
+    public async Task VerifiesTheHashOfEventsWhoseDataASerializerWouldWriteDifferently()
+    {
+        var client = Container!.GetClient();
+
+        var eventCandidate = new EventCandidate(
+            Source: "https://www.eventsourcingdb.io",
+            Subject: "/test",
+            Type: "io.eventsourcingdb.test",
+            Data: new { title = "2001 – A Space Odyssey", note = "<a&b>", price = 1.50 }
+        );
+
+        var writtenEvents = await client.WriteEventsAsync([eventCandidate], token: TestContext.Current.CancellationToken);
+        writtenEvents.Single().VerifyHash();
+
+        var readEvents = await client
+            .ReadEventsAsync("/test", new ReadEventsOptions(Recursive: false), TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        readEvents.Single().VerifyHash();
+    }
+
+    [Fact]
     public async Task ThrowsWhenHashVerificationFails()
     {
         var client = Container!.GetClient();
