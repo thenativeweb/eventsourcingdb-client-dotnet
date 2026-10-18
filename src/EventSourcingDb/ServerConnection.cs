@@ -120,6 +120,14 @@ internal sealed class ServerConnection(
         );
     }
 
+    // A stream that the server ends before it is complete, such as a finite stream of the v2 API
+    // without its end item, or an observation, which never ends on its own. The server ends a
+    // stream like this only after an unexpected failure.
+    public static HttpIOException CreateStreamEndedPrematurelyException()
+    {
+        return new HttpIOException(HttpRequestError.ResponseEnded, "The stream ended before it was complete.");
+    }
+
     private static TimeSpan? GetRetryAfter(HttpResponseMessage response)
     {
         if (response.StatusCode is not HttpStatusCode.TooManyRequests)

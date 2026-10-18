@@ -218,7 +218,7 @@ internal sealed class V1Transport(ServerConnection connection) : IClient
         using var request = new HttpRequestMessage(HttpMethod.Post, observeEventsUrl);
         request.Content = ServerConnection.CreateJsonContent(new { subject, Options = requestOptions });
 
-        await foreach (var line in ReadLinesAsync(request, V1Request.ObserveEvents, token).ConfigureAwait(false))
+        await foreach (var line in ReadLinesAsync(request, V1Request.ObserveEvents, token, isObservation: true).ConfigureAwait(false))
         {
             switch (line.Type)
             {
@@ -332,11 +332,14 @@ internal sealed class V1Transport(ServerConnection connection) : IClient
     }
 
     // Sends a request whose answer is a stream, and reads its lines. Heartbeats are skipped, and
-    // an error ends the stream with a DbApiException.
+    // an error ends the stream with a DbApiException. The streams of the v1 API have no end item,
+    // so they end when the server closes them, except for an observation, which never ends on its
+    // own, and fails if it does.
     private async IAsyncEnumerable<Line> ReadLinesAsync(
         HttpRequestMessage request,
         V1Request v1Request,
-        [EnumeratorCancellation] CancellationToken token)
+        [EnumeratorCancellation] CancellationToken token,
+        bool isObservation = false)
     {
         using var response = await connection.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
         await ThrowIfNotOkAsync(response, v1Request, token).ConfigureAwait(false);
@@ -350,6 +353,11 @@ internal sealed class V1Transport(ServerConnection connection) : IClient
 
             if (rawLine is null)
             {
+                if (isObservation)
+                {
+                    throw ServerConnection.CreateStreamEndedPrematurelyException();
+                }
+
                 yield break;
             }
 

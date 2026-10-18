@@ -91,7 +91,7 @@ internal sealed class V2Transport(ServerConnection connection) : IClient
                 request.Content = ServerConnection.CreateJsonContent(new { events = candidatesWithSerializedData, preconditions });
 
                 var writtenEvents = new List<Event>();
-                await foreach (var item in ReadItemsAsync(request, isFinite: true, token).ConfigureAwait(false))
+                await foreach (var item in ReadItemsAsync(request, token).ConfigureAwait(false))
                 {
                     switch (item.Type)
                     {
@@ -131,7 +131,7 @@ internal sealed class V2Transport(ServerConnection connection) : IClient
         using var request = new HttpRequestMessage(_query, readEventsUrl);
         request.Content = ServerConnection.CreateJsonContent(new { subject, Options = requestOptions });
 
-        await foreach (var item in ReadItemsAsync(request, isFinite: true, token).ConfigureAwait(false))
+        await foreach (var item in ReadItemsAsync(request, token).ConfigureAwait(false))
         {
             switch (item.Type)
             {
@@ -158,7 +158,7 @@ internal sealed class V2Transport(ServerConnection connection) : IClient
         using var request = new HttpRequestMessage(_query, readSubjectsUrl);
         request.Content = ServerConnection.CreateJsonContent(new { subject, options = new { recursive = options.Recursive } });
 
-        await foreach (var item in ReadItemsAsync(request, isFinite: true, token).ConfigureAwait(false))
+        await foreach (var item in ReadItemsAsync(request, token).ConfigureAwait(false))
         {
             switch (item.Type)
             {
@@ -192,7 +192,7 @@ internal sealed class V2Transport(ServerConnection connection) : IClient
         using var request = new HttpRequestMessage(_query, observeEventsUrl);
         request.Content = ServerConnection.CreateJsonContent(new { subject, Options = requestOptions });
 
-        await foreach (var item in ReadItemsAsync(request, isFinite: false, token).ConfigureAwait(false))
+        await foreach (var item in ReadItemsAsync(request, token).ConfigureAwait(false))
         {
             switch (item.Type)
             {
@@ -214,7 +214,7 @@ internal sealed class V2Transport(ServerConnection connection) : IClient
 
         using var request = new HttpRequestMessage(_query, readEventTypesUrl);
 
-        await foreach (var item in ReadItemsAsync(request, isFinite: true, token).ConfigureAwait(false))
+        await foreach (var item in ReadItemsAsync(request, token).ConfigureAwait(false))
         {
             switch (item.Type)
             {
@@ -262,7 +262,7 @@ internal sealed class V2Transport(ServerConnection connection) : IClient
             using var request = new HttpRequestMessage(HttpMethod.Post, registerEventSchemaUrl);
             request.Content = ServerConnection.CreateJsonContent(new { type = eventType, schema });
 
-            await foreach (var item in ReadItemsAsync(request, isFinite: true, token).ConfigureAwait(false))
+            await foreach (var item in ReadItemsAsync(request, token).ConfigureAwait(false))
             {
                 switch (item.Type)
                 {
@@ -289,7 +289,7 @@ internal sealed class V2Transport(ServerConnection connection) : IClient
         using var request = new HttpRequestMessage(_query, runEventQlQueryUrl);
         request.Content = ServerConnection.CreateJsonContent(new RequestBody(query));
 
-        await foreach (var item in ReadItemsAsync(request, isFinite: true, token).ConfigureAwait(false))
+        await foreach (var item in ReadItemsAsync(request, token).ConfigureAwait(false))
         {
             switch (item.Type)
             {
@@ -330,11 +330,10 @@ internal sealed class V2Transport(ServerConnection connection) : IClient
     }
 
     // Sends a request whose answer is a stream, and reads its items. Heartbeats are skipped, and
-    // an error ends the stream with a DbApiException. A finite stream ends with an end item, so
-    // one that breaks off before it fails.
+    // an error ends the stream with a DbApiException. A finite stream ends with an end item, and
+    // an observation never ends, so a stream that breaks off without either fails.
     private async IAsyncEnumerable<Envelope> ReadItemsAsync(
         HttpRequestMessage request,
-        bool isFinite,
         [EnumeratorCancellation] CancellationToken token)
     {
         using var response = await connection.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
@@ -349,12 +348,7 @@ internal sealed class V2Transport(ServerConnection connection) : IClient
 
             if (rawItem is null)
             {
-                if (isFinite)
-                {
-                    throw new HttpIOException(HttpRequestError.ResponseEnded, "The stream ended before its end item.");
-                }
-
-                yield break;
+                throw ServerConnection.CreateStreamEndedPrematurelyException();
             }
 
             var item = JsonSerializer

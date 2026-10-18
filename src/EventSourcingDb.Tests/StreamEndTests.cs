@@ -71,9 +71,9 @@ public sealed class StreamEndTests
     [Theory]
     [InlineData("v1")]
     [InlineData("v2")]
-    public async Task EndsTheObservationIfItsStreamCloses(string apiVersion)
+    public async Task FailsTheObservationIfTheServerClosesItsStreamWithoutAnError(string apiVersion)
     {
-        // Observing never ends on its own, so its stream has no end item.
+        // Observing never ends on its own, so a stream that closes was aborted by a failure.
         var server = FakeServer.ForApi(apiVersion, _ => FakeServer.Ndjson(
             TestRequests.Event(apiVersion, "0"),
             TestRequests.Heartbeat(apiVersion)
@@ -81,12 +81,32 @@ public sealed class StreamEndTests
         var client = server.CreateClient();
         var itemCount = 0;
 
-        await foreach (var _ in TestRequests.GetStream(client, "observe-events", TestContext.Current.CancellationToken))
+        var exception = await Assert.ThrowsAsync<HttpIOException>(async () =>
         {
-            itemCount++;
-        }
+            await foreach (var _ in TestRequests.GetStream(client, "observe-events", TestContext.Current.CancellationToken))
+            {
+                itemCount++;
+            }
+        });
 
         Assert.Equal(1, itemCount);
+        Assert.Equal(HttpRequestError.ResponseEnded, exception.HttpRequestError);
+    }
+
+    [Theory]
+    [InlineData("v1")]
+    [InlineData("v2")]
+    public async Task FailsTheObservationIfTheServerClosesItsStreamBeforeAnyItem(string apiVersion)
+    {
+        var server = FakeServer.ForApi(apiVersion, _ => FakeServer.Ndjson());
+        var client = server.CreateClient();
+
+        await Assert.ThrowsAsync<HttpIOException>(async () =>
+        {
+            await foreach (var _ in TestRequests.GetStream(client, "observe-events", TestContext.Current.CancellationToken))
+            {
+            }
+        });
     }
 
     [Fact]

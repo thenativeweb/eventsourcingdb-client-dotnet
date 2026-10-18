@@ -439,7 +439,7 @@ await foreach (var @event in client.ObserveEventsAsync(
 }
 ```
 
-If an error occurs, the stream will terminate with an exception.
+If an error occurs, the stream will terminate with an exception, a [`DbApiException`](#handling-errors) for an error that the server reports. Observing never ends on its own, so if the server closes the stream without an error, it terminates with an `HttpIOException`.
 
 EventSourcingDB sends a heartbeat every second while there are no new events. If nothing arrives for the [stall timeout](#configuring-the-stall-timeout), which defaults to 30 seconds, the connection has stalled, and the stream will terminate with a `ConnectionStalledException`.
 
@@ -759,6 +759,24 @@ Version 2.0 of this client SDK speaks the v2 API of EventSourcingDB as well as t
 
   // After
   catch (OutcomeUnknownException exception) when (exception.InnerException is OperationCanceledException) { /* ... */ }
+  ```
+
+- **An observation that the server closes fails.** Version 1.x ended the stream of `ObserveEventsAsync` quietly if the server closed it, which it only does after an unexpected failure. Now the stream terminates with an `HttpIOException`, as a stream of the v2 API that breaks off before its end does.
+
+  ```csharp
+  // Before
+  await foreach (var @event in client.ObserveEventsAsync("/books", options)) { /* ... */ }
+  // The observation has ended.
+
+  // After
+  try
+  {
+      await foreach (var @event in client.ObserveEventsAsync("/books", options)) { /* ... */ }
+  }
+  catch (HttpIOException)
+  {
+      // The server closed the observation, so observe again.
+  }
   ```
 
 - **`HeartbeatTimeoutException` is gone.** A stalled stream of `ObserveEventsAsync` or `RunEventQlQueryAsync` now fails with a `ConnectionStalledException`, as every other stalled request does.
