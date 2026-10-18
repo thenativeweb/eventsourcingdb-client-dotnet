@@ -12,6 +12,7 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using EventSourcingDb.Types;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -33,29 +34,54 @@ public class Client : IClient
         WriteIndented = false,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
+    private static readonly TimeSpan _maxStallTimeout = TimeSpan.FromMilliseconds(uint.MaxValue - 1);
+
     private readonly HttpClient _httpClient;
     private readonly ILogger<Client> _logger;
 
-    // EventSourcingDB sends a heartbeat every second while there is nothing else to send, so a stream
-    // that stays silent for this long has stalled. Only tests set a different value.
-    internal TimeSpan HeartbeatTimeout { get; init; } = TimeSpan.FromSeconds(30);
-
-    public Client(Uri baseUrl, string apiToken) : this(CreateHttpClient(baseUrl, apiToken), null, null)
+    public Client(Uri baseUrl, string apiToken) : this(CreateHttpClient(baseUrl, apiToken), new ClientOptions(), null, null)
     {
     }
 
-    public Client(Uri baseUrl, string apiToken, ILogger<Client>? logger = null) : this(CreateHttpClient(baseUrl, apiToken), null, logger)
+    public Client(Uri baseUrl, string apiToken, ILogger<Client>? logger = null) : this(CreateHttpClient(baseUrl, apiToken), new ClientOptions(), null, logger)
     {
     }
 
     public Client(Uri baseUrl, string apiToken, JsonSerializerOptions? dataSerializerOptions = null, ILogger<Client>? logger = null)
-        : this(CreateHttpClient(baseUrl, apiToken), dataSerializerOptions, logger)
+        : this(CreateHttpClient(baseUrl, apiToken), new ClientOptions(), dataSerializerOptions, logger)
     {
     }
 
-    public Client(HttpClient httpClient, JsonSerializerOptions? dataSerializerOptions = null, ILogger<Client>? logger = null)
+    public Client(Uri baseUrl, string apiToken, ClientOptions options, JsonSerializerOptions? dataSerializerOptions = null, ILogger<Client>? logger = null)
+        : this(CreateHttpClient(baseUrl, apiToken), options, dataSerializerOptions, logger)
     {
+    }
+
+    // Typed HttpClient registrations create the client through ActivatorUtilities, which needs to
+    // know which of the constructors that take an HttpClient to use.
+    [ActivatorUtilitiesConstructor]
+    public Client(HttpClient httpClient, JsonSerializerOptions? dataSerializerOptions = null, ILogger<Client>? logger = null)
+        : this(httpClient, new ClientOptions(), dataSerializerOptions, logger)
+    {
+    }
+
+    // All parameters are required, since optional ones would make a call such as
+    // new Client(httpClient, null) ambiguous with the constructor above.
+    public Client(HttpClient httpClient, ClientOptions options, JsonSerializerOptions? dataSerializerOptions, ILogger<Client>? logger)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        if (options.StallTimeout <= TimeSpan.Zero || options.StallTimeout > _maxStallTimeout)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(options),
+                options.StallTimeout,
+                FormattableString.Invariant($"The stall timeout must be greater than zero and at most {_maxStallTimeout.TotalMilliseconds} milliseconds.")
+            );
+        }
+
         _httpClient = httpClient;
+        StallTimeout = options.StallTimeout;
 
         if (dataSerializerOptions is not null)
         {
@@ -64,6 +90,12 @@ public class Client : IClient
 
         _logger = logger ?? NullLogger<Client>.Instance;
     }
+
+    // A request fails once nothing arrives from the server for this long, from sending it until
+    // its end. Everything that arrives starts the time anew, so it does not limit how long a
+    // stream lasts. EventSourcingDB sends a heartbeat every second on the streams that wait for
+    // new events, so these never fall silent while the connection is intact.
+    internal TimeSpan StallTimeout { get; }
 
     public async Task PingAsync(CancellationToken token = default)
     {
@@ -75,7 +107,7 @@ public class Client : IClient
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, pingUrl);
-            using var response = await _httpClient.SendAsync(request, token).ConfigureAwait(false);
+            using var response = await SendAsync(request, HttpCompletionOption.ResponseContentRead, token).ConfigureAwait(false);
             response.ThrowIfNotValidServerHeader();
             await response.ThrowIfNotSuccessStatusCode(token);
 
@@ -105,7 +137,7 @@ public class Client : IClient
         {
             using var request = new HttpRequestMessage(HttpMethod.Post, verifyUrl);
 
-            using var response = await _httpClient.SendAsync(request, token).ConfigureAwait(false);
+            using var response = await SendAsync(request, HttpCompletionOption.ResponseContentRead, token).ConfigureAwait(false);
             response.ThrowIfNotValidServerHeader();
             await response.ThrowIfNotSuccessStatusCode(token);
 
@@ -147,7 +179,7 @@ public class Client : IClient
                 MediaTypeNames.Application.Json
             );
 
-            using var response = await _httpClient.SendAsync(request, token).ConfigureAwait(false);
+            using var response = await SendAsync(request, HttpCompletionOption.ResponseContentRead, token).ConfigureAwait(false);
             response.ThrowIfNotValidServerHeader();
             await response.ThrowIfNotSuccessStatusCode(token);
 
@@ -193,9 +225,7 @@ public class Client : IClient
             MediaTypeNames.Application.Json
         );
 
-        using var response = await _httpClient
-            .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token)
-            .ConfigureAwait(false);
+        using var response = await SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
         response.ThrowIfNotValidServerHeader();
         await response.ThrowIfNotSuccessStatusCode(token);
 
@@ -254,9 +284,7 @@ public class Client : IClient
             MediaTypeNames.Application.Json
         );
 
-        using var response = await _httpClient
-            .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token)
-            .ConfigureAwait(false);
+        using var response = await SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
         response.ThrowIfNotValidServerHeader();
         await response.ThrowIfNotSuccessStatusCode(token);
 
@@ -314,9 +342,7 @@ public class Client : IClient
             MediaTypeNames.Application.Json
         );
 
-        using var response = await _httpClient
-            .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token)
-            .ConfigureAwait(false);
+        using var response = await SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
         response.ThrowIfNotValidServerHeader();
         await response.ThrowIfNotSuccessStatusCode(token);
 
@@ -370,9 +396,7 @@ public class Client : IClient
 
         using var request = new HttpRequestMessage(HttpMethod.Post, readEvenTypesUrl);
 
-        using var response = await _httpClient
-            .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token)
-            .ConfigureAwait(false);
+        using var response = await SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
         response.ThrowIfNotValidServerHeader();
         await response.ThrowIfNotSuccessStatusCode(token);
 
@@ -431,7 +455,7 @@ public class Client : IClient
             MediaTypeNames.Application.Json
         );
 
-        using var response = await _httpClient.SendAsync(request, token).ConfigureAwait(false);
+        using var response = await SendAsync(request, HttpCompletionOption.ResponseContentRead, token).ConfigureAwait(false);
         await response.ThrowIfNotSuccessStatusCode(token);
 
         var eventTypeResponse = await response.Content
@@ -466,7 +490,7 @@ public class Client : IClient
             MediaTypeNames.Application.Json
         );
 
-        using var response = await _httpClient.SendAsync(request, token).ConfigureAwait(false);
+        using var response = await SendAsync(request, HttpCompletionOption.ResponseContentRead, token).ConfigureAwait(false);
         await response.ThrowIfNotSuccessStatusCode(token);
     }
 
@@ -485,9 +509,7 @@ public class Client : IClient
             MediaTypeNames.Application.Json
         );
 
-        using var response = await _httpClient
-            .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token)
-            .ConfigureAwait(false);
+        using var response = await SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
         response.ThrowIfNotValidServerHeader();
         await response.ThrowIfNotSuccessStatusCode(token);
 
@@ -523,21 +545,93 @@ public class Client : IClient
         }
     }
 
+    // A stream with heartbeats has always reported a stall as a HeartbeatTimeoutException, so it
+    // keeps doing so.
     private async ValueTask<string?> ReadLineWithinHeartbeatTimeoutAsync(StreamLineReader lineReader, CancellationToken token)
     {
-        using var heartbeatTimeoutSource = CancellationTokenSource.CreateLinkedTokenSource(token);
-        heartbeatTimeoutSource.CancelAfter(HeartbeatTimeout);
-
         try
         {
-            return await lineReader.ReadLineAsync(heartbeatTimeoutSource.Token).ConfigureAwait(false);
+            return await lineReader.ReadLineAsync(token).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (heartbeatTimeoutSource.IsCancellationRequested && !token.IsCancellationRequested)
+        catch (ConnectionStalledException)
         {
             throw new HeartbeatTimeoutException(
-                FormattableString.Invariant($"No event and no heartbeat arrived for {HeartbeatTimeout.TotalSeconds} seconds.")
+                FormattableString.Invariant($"No event and no heartbeat arrived for {StallTimeout.TotalSeconds} seconds.")
             );
         }
+    }
+
+    // Sends a request and fails once nothing arrives from the server for the stall timeout. Until
+    // the response headers arrive, and for a response that is read completely before it is
+    // returned (ResponseContentRead), a stall fails with a TaskCanceledException, as the timeout of
+    // HttpClient did before, with a ConnectionStalledException as its inner exception. Reading the
+    // content of a streamed response (ResponseHeadersRead) fails with a ConnectionStalledException.
+    private async Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request,
+        HttpCompletionOption completionOption,
+        CancellationToken token)
+    {
+        HttpResponseMessage response;
+
+        using (var stallSource = CancellationTokenSource.CreateLinkedTokenSource(token))
+        {
+            stallSource.CancelAfter(StallTimeout);
+
+            try
+            {
+                response = await _httpClient
+                    .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, stallSource.Token)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (stallSource.IsCancellationRequested && !token.IsCancellationRequested)
+            {
+                throw CreateRequestStalledException(CreateConnectionStalledException());
+            }
+            catch (OperationCanceledException exception) when (token.IsCancellationRequested && exception.CancellationToken != token)
+            {
+                // HttpClient only knows the linked token, but callers tell their own cancellation
+                // apart by its token, so the exception must carry the caller's token.
+                throw new TaskCanceledException(exception.Message, exception, token);
+            }
+        }
+
+        response.Content = new StallDetectingContent(response.Content, StallTimeout, CreateConnectionStalledException);
+
+        if (completionOption is HttpCompletionOption.ResponseContentRead)
+        {
+            try
+            {
+                // Reading the content buffers it, so it can be read again afterwards.
+                await response.Content.ReadAsByteArrayAsync(token).ConfigureAwait(false);
+            }
+            catch (ConnectionStalledException exception)
+            {
+                response.Dispose();
+                throw CreateRequestStalledException(exception);
+            }
+            catch
+            {
+                response.Dispose();
+                throw;
+            }
+        }
+
+        return response;
+    }
+
+    private ConnectionStalledException CreateConnectionStalledException()
+    {
+        return new ConnectionStalledException(
+            FormattableString.Invariant($"Nothing arrived from the server for {StallTimeout.TotalSeconds} seconds.")
+        );
+    }
+
+    private TaskCanceledException CreateRequestStalledException(ConnectionStalledException innerException)
+    {
+        return new TaskCanceledException(
+            FormattableString.Invariant($"The request was canceled, since nothing arrived from the server for {StallTimeout.TotalSeconds} seconds."),
+            innerException
+        );
     }
 
     private TRow? DeserializeRow<TRow>(JsonElement payload)
@@ -570,9 +664,12 @@ public class Client : IClient
         {
             PooledConnectionLifetime = TimeSpan.FromMinutes(2)
         };
+        // The client bounds every request by its stall timeout, so the timeout of HttpClient, which
+        // would also bound streams, must not cut requests short.
         var httpClient = new HttpClient(handler)
         {
-            BaseAddress = baseUrl
+            BaseAddress = baseUrl,
+            Timeout = Timeout.InfiniteTimeSpan
         };
         httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
 

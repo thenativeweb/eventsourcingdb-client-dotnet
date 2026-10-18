@@ -10,8 +10,8 @@ public class EventSourcingDbTests : IAsyncLifetime
 
     public async ValueTask InitializeAsync()
     {
-        var imageVersion = DockerfileHelper.GetImageVersionFromDockerfile();
-        Container = new Container().WithImageTag(imageVersion);
+        var imageTag = DockerfileHelper.GetImageTag();
+        Container = new Container().WithImageTag(imageTag);
         await Container.StartAsync();
     }
 

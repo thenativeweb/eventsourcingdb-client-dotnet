@@ -11,10 +11,10 @@ public class ContainerTests : IAsyncDisposable
     [Fact]
     public async Task StartsWithACustomPort()
     {
-        var imageVersion = DockerfileHelper.GetImageVersionFromDockerfile();
+        var imageTag = DockerfileHelper.GetImageTag();
 
         _container = new Container()
-            .WithImageTag(imageVersion)
+            .WithImageTag(imageTag)
             .WithPort(4000);
 
         await _container.StartAsync(TestContext.Current.CancellationToken);

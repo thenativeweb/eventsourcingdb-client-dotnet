@@ -6,11 +6,27 @@ namespace EventSourcingDb.Tests;
 
 public static class DockerfileHelper
 {
+    private const string ImageTagVariable = "EVENTSOURCINGDB_IMAGE_TAG";
+
     private static readonly Regex VersionRegex = new Regex(
         @"^FROM\sthenativeweb/eventsourcingdb:(.+)$",
         RegexOptions.Multiline | RegexOptions.Compiled);
 
-    public static string GetImageVersionFromDockerfile()
+    // The tests run against the image tag in EVENTSOURCINGDB_IMAGE_TAG, so that CI can run them
+    // against several tags. Without the variable, they use the tag from the Dockerfile.
+    public static string GetImageTag()
+    {
+        var imageTag = Environment.GetEnvironmentVariable(ImageTagVariable);
+
+        if (!string.IsNullOrWhiteSpace(imageTag))
+        {
+            return imageTag.Trim();
+        }
+
+        return GetImageVersionFromDockerfile();
+    }
+
+    private static string GetImageVersionFromDockerfile()
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);
 
