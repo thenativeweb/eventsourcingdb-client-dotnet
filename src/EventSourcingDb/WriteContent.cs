@@ -23,7 +23,7 @@ namespace EventSourcingDb;
 // a handler that retries requests after an HttpRequestException does not retry the refusal.
 internal sealed class WriteContent : HttpContent
 {
-    private const string SentAgainMessage = "Something in the HTTP pipeline, for example a handler that retries requests, tried to send the write a second time, which the client SDK refused, so that it cannot be stored twice.";
+    private const string SentAgainMessage = "The HTTP pipeline tried to send the body of the write a second time, e.g. a handler that retries requests, follows a redirect, or reads the body, which the client SDK refused, so that the write cannot be stored twice.";
 
     private readonly byte[] _body;
     private int _handOnCount;

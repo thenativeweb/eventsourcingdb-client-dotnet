@@ -24,7 +24,7 @@ public sealed class RetriedWriteTests
 {
     private const string ApiToken = "secret";
 
-    private const string SentAgainMessage = "Something in the HTTP pipeline, for example a handler that retries requests, tried to send the write a second time, which the client SDK refused, so that it cannot be stored twice.";
+    private const string SentAgainMessage = "The HTTP pipeline tried to send the body of the write a second time, e.g. a handler that retries requests, follows a redirect, or reads the body, which the client SDK refused, so that the write cannot be stored twice.";
 
     private static readonly string[] _apiVersions = ["v1", "v2"];
 
@@ -63,6 +63,24 @@ public sealed class RetriedWriteTests
                     {
                         data.Add(apiVersion, request, setup);
                     }
+                }
+            }
+
+            return data;
+        }
+    }
+
+    public static TheoryData<string, string, HttpStatusCode> WritesWithRedirects
+    {
+        get
+        {
+            var data = new TheoryData<string, string, HttpStatusCode>();
+            foreach (var apiVersion in _apiVersions)
+            {
+                foreach (var request in TestRequests.Writes)
+                {
+                    data.Add(apiVersion, request, HttpStatusCode.TemporaryRedirect);
+                    data.Add(apiVersion, request, HttpStatusCode.PermanentRedirect);
                 }
             }
 
@@ -180,6 +198,43 @@ public sealed class RetriedWriteTests
         Assert.Single(server.Requests, IsWrite);
     }
 
+    // The HttpClient follows a redirect that keeps the method by sending the body again, so a
+    // redirect on the path of a write makes every write fail.
+    [Theory]
+    [MemberData(nameof(WritesWithRedirects))]
+    public async Task RefusesToSendAWriteAgainThatTheServerRedirects(string apiVersion, string request, HttpStatusCode status)
+    {
+        var server = FakeServer.ForApi(apiVersion, fakeRequest => fakeRequest.Path.StartsWith("/final/", StringComparison.Ordinal)
+            ? Stored(apiVersion)
+            : Redirect(status, $"/final{fakeRequest.Path}"));
+        await using var listener = new FakeServerListener(server);
+        var client = new Client(listener.BaseUrl, ApiToken);
+
+        var exception = await Record.ExceptionAsync(() => TestRequests.RunAsync(client, request, TestContext.Current.CancellationToken));
+
+        Assert.Single(server.Requests, IsWrite);
+        var outcomeUnknownException = Assert.IsType<OutcomeUnknownException>(exception);
+        var refusal = Assert.IsType<NotSupportedException>(outcomeUnknownException.InnerException);
+        Assert.Equal(SentAgainMessage, refusal.Message);
+    }
+
+    // A handler that reads the body by copying it, before it passes the request on, has the body
+    // serialize itself, so the client refuses to send it afterwards, and every write fails.
+    [Theory]
+    [MemberData(nameof(Writes))]
+    public async Task RefusesToSendAWriteWhoseBodyAHandlerReadByCopyingIt(string apiVersion, string request)
+    {
+        var server = CreateServer(apiVersion, isFirstWriteLost: false);
+        var client = new Client(new HttpClient(new CopyingHandler(server)) { BaseAddress = new Uri("http://esdb.test") });
+
+        var exception = await Record.ExceptionAsync(() => TestRequests.RunAsync(client, request, TestContext.Current.CancellationToken));
+
+        Assert.DoesNotContain(server.Requests, IsWrite);
+        var outcomeUnknownException = Assert.IsType<OutcomeUnknownException>(exception);
+        var refusal = Assert.IsType<NotSupportedException>(outcomeUnknownException.InnerException);
+        Assert.Equal(SentAgainMessage, refusal.Message);
+    }
+
     // A stream of the body goes to whoever reads it rather than to a connection, so a handler
     // that reads the body as a stream, such as one that logs it, does not keep the client from
     // sending it.
@@ -239,6 +294,14 @@ public sealed class RetriedWriteTests
         return apiVersion == "v1"
             ? FakeServer.Json(HttpStatusCode.OK, $"[{TestRequests.EventJson}]")
             : FakeServer.Ndjson(TestRequests.Event("v2", "0"), TestRequests.End);
+    }
+
+    private static HttpResponseMessage Redirect(HttpStatusCode status, string location)
+    {
+        var response = FakeServer.Text(status, "");
+        response.Headers.Location = new Uri(location, UriKind.Relative);
+
+        return response;
     }
 
     // Besides the write, the client sends only the probe.
@@ -404,6 +467,21 @@ public sealed class RetriedWriteTests
             if (request.Content is not null)
             {
                 await request.Content.ReadAsStringAsync(cancellationToken);
+            }
+
+            return await base.SendAsync(request, cancellationToken);
+        }
+    }
+
+    // Copies the body before passing the request on, as a handler that logs it may do.
+    private sealed class CopyingHandler(HttpMessageHandler innerHandler) : DelegatingHandler(innerHandler)
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.Content is not null)
+            {
+                using var copy = new MemoryStream();
+                await request.Content.CopyToAsync(copy, cancellationToken);
             }
 
             return await base.SendAsync(request, cancellationToken);
