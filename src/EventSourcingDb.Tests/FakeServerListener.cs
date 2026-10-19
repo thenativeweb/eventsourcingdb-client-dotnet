@@ -14,7 +14,9 @@ namespace EventSourcingDb.Tests;
 // Serves a FakeServer over real connections, so that it also stands in for EventSourcingDB for a
 // client that creates its HttpClient on its own. It reads every request of a connection, hands
 // it to the FakeServer, and writes back its answer with a body of a known length, so that the
-// client can send its next request over the same connection.
+// client can send its next request over the same connection. If the FakeServer fails a request
+// with an HttpRequestException, as a connection that broke, the listener closes the connection
+// without an answer, after it has read the whole request.
 internal sealed class FakeServerListener : IAsyncDisposable
 {
     private readonly HttpMessageInvoker _server;
@@ -47,9 +49,10 @@ internal sealed class FakeServerListener : IAsyncDisposable
                 _connections.Add(ServeAsync(tcpClient, token));
             }
         }
-        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        catch (Exception) when (token.IsCancellationRequested)
         {
-            // Ignored, the server is being disposed
+            // Ignored, the server is being disposed. Disposing it also stops the listener, so an
+            // accept that starts right after a connection arrived fails as not listening.
         }
     }
 
@@ -65,8 +68,20 @@ internal sealed class FakeServerListener : IAsyncDisposable
                 {
                     using (request)
                     {
-                        using var response = await _server.SendAsync(request, token);
-                        await WriteResponseAsync(stream, response, token);
+                        HttpResponseMessage response;
+                        try
+                        {
+                            response = await _server.SendAsync(request, token);
+                        }
+                        catch (HttpRequestException)
+                        {
+                            return;
+                        }
+
+                        using (response)
+                        {
+                            await WriteResponseAsync(stream, response, token);
+                        }
                     }
                 }
             }
