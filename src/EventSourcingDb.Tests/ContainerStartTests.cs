@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Docker.DotNet;
 using Docker.DotNet.Models;
 using DotNet.Testcontainers.Builders;
+using DotNet.Testcontainers.Containers;
 using Xunit;
 
 namespace EventSourcingDb.Tests;
@@ -20,6 +21,9 @@ public sealed class ContainerStartTests : IAsyncDisposable
     private const string TestLabel = "io.eventsourcingdb.client-dotnet.container-start-test";
 
     private const string ExitedPrefix = "Failed to start the container, it exited before the database became reachable: ";
+
+    // Pulling the image does not count towards the startup timeout, but towards this one.
+    private static readonly TimeSpan _guardTimeout = TimeSpan.FromMinutes(2);
 
     private readonly string _testId = Guid.NewGuid().ToString();
     private readonly DockerEvents _events;
@@ -34,7 +38,7 @@ public sealed class ContainerStartTests : IAsyncDisposable
     [Fact]
     public async Task StartsAContainerWhoseDatabaseBecomesReachable()
     {
-        var container = await ContainerStart.StartAsync(CreateBuilder(), 3000, TimeSpan.FromSeconds(20), TestContext.Current.CancellationToken);
+        var container = await StartWithoutStartupTimeoutAsync(CreateBuilder());
 
         try
         {
@@ -118,7 +122,7 @@ public sealed class ContainerStartTests : IAsyncDisposable
     public async Task FailsAtOnceWithTheEndOfTheLogIfTheContainerExitsAndRemovesIt()
     {
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            ContainerStart.StartAsync(CreateBuilder(extraArguments: "--no-such-flag"), 3000, TimeSpan.FromSeconds(20), TestContext.Current.CancellationToken)
+            StartWithoutStartupTimeoutAsync(CreateBuilder(extraArguments: "--no-such-flag"))
         );
 
         Assert.StartsWith(ExitedPrefix, exception.Message);
@@ -140,7 +144,7 @@ public sealed class ContainerStartTests : IAsyncDisposable
         var builder = CreateBuilder(image: $"thenativeweb/eventsourcingdb:non-existent-{Guid.NewGuid()}");
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            ContainerStart.StartAsync(builder, 3000, TimeSpan.FromSeconds(20), TestContext.Current.CancellationToken)
+            StartWithoutStartupTimeoutAsync(builder)
         );
 
         Assert.NotNull(exception.InnerException);
@@ -159,7 +163,7 @@ public sealed class ContainerStartTests : IAsyncDisposable
         var builder = CreateBuilder().WithResourceMapping("content"u8.ToArray(), "/bin/busybox/file");
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            ContainerStart.StartAsync(builder, 3000, TimeSpan.FromSeconds(20), TestContext.Current.CancellationToken)
+            StartWithoutStartupTimeoutAsync(builder)
         );
 
         var dockerException = Assert.IsAssignableFrom<DockerApiException>(exception.InnerException);
@@ -175,14 +179,12 @@ public sealed class ContainerStartTests : IAsyncDisposable
     {
         // Testcontainers calls the startup callback once the container runs, and before the start
         // pings the database, which never becomes reachable here. Docker cannot copy a file into
-        // another file. The startup timeout runs from creating the container, so it leaves a busy
-        // Docker the time to create and start it, as otherwise the attempt ends before the
-        // callback, and another container replaces it.
+        // another file.
         var builder = CreateBuilder(httpPort: 3001)
             .WithStartupCallback((container, token) => container.CopyAsync("content"u8.ToArray(), "/bin/busybox/file", ct: token));
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            ContainerStart.StartAsync(builder, 3000, TimeSpan.FromSeconds(20), TestContext.Current.CancellationToken)
+            StartWithoutStartupTimeoutAsync(builder)
         );
 
         var dockerException = Assert.IsAssignableFrom<DockerApiException>(exception.InnerException);
@@ -288,6 +290,16 @@ public sealed class ContainerStartTests : IAsyncDisposable
             .WithCommand(command)
             .WithLabel(TestLabel, _testId)
             .WithCleanUp(true);
+    }
+
+    // Starts without a startup timeout, for a test whose outcome must not depend on how fast Docker
+    // is, since a busy Docker could otherwise have the container replaced first. The test waits for
+    // the start for the guard timeout at most instead.
+    private static Task<IContainer> StartWithoutStartupTimeoutAsync(ContainerBuilder builder)
+    {
+        return ContainerStart
+            .StartAsync(builder, 3000, Timeout.InfiniteTimeSpan, TestContext.Current.CancellationToken)
+            .WaitAsync(_guardTimeout, TestContext.Current.CancellationToken);
     }
 
     // Talks to Docker through the proxy. Without Ryuk, Testcontainers does not create its container
