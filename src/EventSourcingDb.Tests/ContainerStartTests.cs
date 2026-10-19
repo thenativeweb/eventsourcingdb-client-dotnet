@@ -175,12 +175,13 @@ public sealed class ContainerStartTests : IAsyncDisposable
     {
         // Testcontainers calls the startup callback once the container runs, and before the start
         // pings the database, which never becomes reachable here. Docker cannot copy a file into
-        // another file.
+        // another file. A busy Docker may take more than a few seconds to fail, and the start must
+        // not replace the container before, so the startup timeout is as long as in the other tests.
         var builder = CreateBuilder(httpPort: 3001)
             .WithStartupCallback((container, token) => container.CopyAsync("content"u8.ToArray(), "/bin/busybox/file", ct: token));
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            ContainerStart.StartAsync(builder, 3000, TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken)
+            ContainerStart.StartAsync(builder, 3000, TimeSpan.FromSeconds(20), TestContext.Current.CancellationToken)
         );
 
         var dockerException = Assert.IsAssignableFrom<DockerApiException>(exception.InnerException);
