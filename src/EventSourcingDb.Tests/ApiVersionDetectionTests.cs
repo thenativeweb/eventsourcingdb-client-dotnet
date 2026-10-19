@@ -466,6 +466,58 @@ public sealed class ApiVersionDetectionTests
         Assert.Equal(new FakeRequest("POST", "/api/v2/system/verify-token", null), server.Requests[2]);
     }
 
+    public static TheoryData<string, HttpStatusCode> AllRequestsWithAnyOtherStatus
+    {
+        get
+        {
+            HttpStatusCode[] statuses =
+            [
+                HttpStatusCode.BadRequest,
+                HttpStatusCode.Unauthorized,
+                HttpStatusCode.Forbidden,
+                HttpStatusCode.Conflict,
+                HttpStatusCode.TooManyRequests,
+                HttpStatusCode.InternalServerError,
+                HttpStatusCode.ServiceUnavailable,
+            ];
+
+            var data = new TheoryData<string, HttpStatusCode>();
+            foreach (var request in TestRequests.All)
+            {
+                foreach (var status in statuses)
+                {
+                    data.Add(request, status);
+                }
+            }
+
+            return data;
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(AllRequestsWithAnyOtherStatus))]
+    public async Task KeepsUsingTheV2ApiAfterAnAnswerWithAnyStatusOtherThan404Or405(string request, HttpStatusCode status)
+    {
+        var answerCount = 0;
+        var server = FakeServer.ForApi("v2", _ => Interlocked.Increment(ref answerCount) == 1
+            ? FakeServer.Text(status, "failed\n")
+            : FakeServer.Json(HttpStatusCode.OK, """{"type":"event","data":{"type":"io.eventsourcingdb.api.token-verified"}}"""));
+        var client = server.CreateClient();
+
+        var exception = await Record.ExceptionAsync(() => TestRequests.RunAsync(client, request, TestContext.Current.CancellationToken));
+
+        // A write that the server does not refuse leaves open whether it was stored.
+        var dbApiException = exception is OutcomeUnknownException outcomeUnknownException
+            ? Assert.IsType<DbApiException>(outcomeUnknownException.InnerException)
+            : Assert.IsType<DbApiException>(exception);
+        Assert.Equal(status, dbApiException.Status);
+
+        await client.VerifyApiTokenAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, server.Requests.Count);
+        Assert.Equal(new FakeRequest("POST", "/api/v2/system/verify-token", null), server.Requests[2]);
+    }
+
     [Theory]
     [MemberData(nameof(AllRequests))]
     public async Task KeepsUsingTheV1ApiAfterAnAnswerOf404(string request)
