@@ -685,6 +685,13 @@ var container = new Container()
     .WithApiToken("secret");
 ```
 
+By default, `StartAsync` gives the test container 30 seconds to become reachable, from creating it until the database answers a ping, without the time it takes to pull the image. A container that is running but does not become reachable in time is replaced by a new one, up to 3 containers in total. If the container exits before it becomes reachable, or if Docker fails, `StartAsync` throws an `InvalidOperationException` at once, with Docker's error as its inner exception in the latter case. Every container whose start fails is removed at once. To change the 30 seconds, call the `WithStartupTimeout` method:
+
+```csharp
+var container = new Container()
+    .WithStartupTimeout(TimeSpan.FromSeconds(60));
+```
+
 If you want to sign events, call the `WithSigningKey` method. This generates a new signing and verification key pair inside the container:
 
 ```csharp
