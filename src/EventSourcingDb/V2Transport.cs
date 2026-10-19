@@ -32,8 +32,9 @@ internal sealed class V2Transport(ServerConnection connection) : IClient
 
         try
         {
+            // The ping needs no API token, so it sends none.
             using var request = new HttpRequestMessage(HttpMethod.Get, pingUrl);
-            var envelope = await ReadSingleAsync(request, token).ConfigureAwait(false);
+            var envelope = await ReadSingleAsync(request, token, withApiToken: false).ConfigureAwait(false);
 
             ThrowIfNotExpectedEvent(envelope, expectedEventType);
 
@@ -321,9 +322,9 @@ internal sealed class V2Transport(ServerConnection connection) : IClient
 
     // Sends a request whose answer is a single envelope, and returns it. An error in the answer
     // fails with a DbApiException.
-    private async Task<Envelope> ReadSingleAsync(HttpRequestMessage request, CancellationToken token)
+    private async Task<Envelope> ReadSingleAsync(HttpRequestMessage request, CancellationToken token, bool withApiToken = true)
     {
-        using var response = await connection.SendAsync(request, HttpCompletionOption.ResponseContentRead, token).ConfigureAwait(false);
+        using var response = await connection.SendAsync(request, HttpCompletionOption.ResponseContentRead, token, withApiToken).ConfigureAwait(false);
         await ThrowIfNotOkAsync(response, token).ConfigureAwait(false);
 
         var rawEnvelope = await response.Content.ReadAsStringAsync(token).ConfigureAwait(false);

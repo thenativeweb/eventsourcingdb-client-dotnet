@@ -31,21 +31,21 @@ public class Client : IClient
     private readonly V1Transport _v1Transport;
     private readonly V2Transport _v2Transport;
 
-    public Client(Uri baseUrl, string apiToken) : this(CreateHttpClient(baseUrl, apiToken), new ClientOptions(), null, null)
+    public Client(Uri baseUrl, string apiToken) : this(baseUrl, apiToken, new ClientOptions(), null, null)
     {
     }
 
-    public Client(Uri baseUrl, string apiToken, ILogger<Client>? logger = null) : this(CreateHttpClient(baseUrl, apiToken), new ClientOptions(), null, logger)
+    public Client(Uri baseUrl, string apiToken, ILogger<Client>? logger = null) : this(baseUrl, apiToken, new ClientOptions(), null, logger)
     {
     }
 
     public Client(Uri baseUrl, string apiToken, JsonSerializerOptions? dataSerializerOptions = null, ILogger<Client>? logger = null)
-        : this(CreateHttpClient(baseUrl, apiToken), new ClientOptions(), dataSerializerOptions, logger)
+        : this(baseUrl, apiToken, new ClientOptions(), dataSerializerOptions, logger)
     {
     }
 
     public Client(Uri baseUrl, string apiToken, ClientOptions options, JsonSerializerOptions? dataSerializerOptions = null, ILogger<Client>? logger = null)
-        : this(CreateHttpClient(baseUrl, apiToken), options, dataSerializerOptions, logger)
+        : this(CreateHttpClient(baseUrl), new AuthenticationHeaderValue("Bearer", apiToken), options, dataSerializerOptions, logger, new ApiVersionDetector())
     {
     }
 
@@ -58,9 +58,10 @@ public class Client : IClient
     }
 
     // All parameters are required, since optional ones would make a call such as
-    // new Client(httpClient, null) ambiguous with the constructor above.
+    // new Client(httpClient, null) ambiguous with the constructor above. An HttpClient that the
+    // application passes in brings its own Authorization header, so the client adds no API token.
     public Client(HttpClient httpClient, ClientOptions options, JsonSerializerOptions? dataSerializerOptions, ILogger<Client>? logger)
-        : this(httpClient, options, dataSerializerOptions, logger, new ApiVersionDetector())
+        : this(httpClient, null, options, dataSerializerOptions, logger, new ApiVersionDetector())
     {
     }
 
@@ -68,6 +69,7 @@ public class Client : IClient
     // of them does not probe on its own.
     internal Client(
         HttpClient httpClient,
+        AuthenticationHeaderValue? authorization,
         ClientOptions options,
         JsonSerializerOptions? dataSerializerOptions,
         ILogger<Client>? logger,
@@ -86,6 +88,7 @@ public class Client : IClient
 
         _connection = new ServerConnection(
             httpClient,
+            authorization,
             options.StallTimeout,
             dataSerializerOptions ?? CreateDefaultDataSerializerOptions(),
             logger ?? NullLogger<Client>.Instance
@@ -215,7 +218,8 @@ public class Client : IClient
     // and answers with 404, or with 405 where its UI serves other methods. Such an answer means
     // v1 even if it does not come from EventSourcingDB, as from a proxy that passes on only the
     // paths of the v1 API, since every request to the v1 API checks that its answer does. Any
-    // other answer is no definitive one, so the probe fails with it.
+    // other answer is no definitive one, so the probe fails with it. Like every ping, the probe
+    // needs no API token, so it sends none.
     private async Task<ApiVersion> ProbeAsync()
     {
         var logger = _connection.Logger;
@@ -225,7 +229,7 @@ public class Client : IClient
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, ProbeUrl);
             using var response = await _connection
-                .SendAsync(request, HttpCompletionOption.ResponseContentRead, CancellationToken.None)
+                .SendAsync(request, HttpCompletionOption.ResponseContentRead, CancellationToken.None, withApiToken: false)
                 .ConfigureAwait(false);
             if (response.StatusCode is not (HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed))
             {
@@ -285,7 +289,9 @@ public class Client : IClient
         };
     }
 
-    private static HttpClient CreateHttpClient(Uri baseUrl, string apiToken)
+    // The API token goes with each request instead of being a default header of the HttpClient,
+    // see ServerConnection.
+    private static HttpClient CreateHttpClient(Uri baseUrl)
     {
         var handler = new SocketsHttpHandler
         {
@@ -298,7 +304,6 @@ public class Client : IClient
             BaseAddress = baseUrl,
             Timeout = Timeout.InfiniteTimeSpan
         };
-        httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiToken);
 
         return httpClient;
     }

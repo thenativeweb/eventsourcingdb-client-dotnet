@@ -1,6 +1,7 @@
 using System;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Net.Mime;
 using System.Text;
 using System.Text.Json;
@@ -11,10 +12,16 @@ using Microsoft.Extensions.Logging;
 
 namespace EventSourcingDb;
 
-// What both APIs share: the HttpClient, the stall timeout that bounds every request, the
-// serialization, and the logger.
+// What both APIs share: the HttpClient, the Authorization header with the API token, the stall
+// timeout that bounds every request, the serialization, and the logger.
+//
+// The API token goes with every request except the pings, which EventSourcingDB answers without
+// one. Since a default header of the HttpClient cannot be left out of a single request, the
+// header goes with each request instead. Without it, as with an HttpClient that the application
+// passes in, the requests carry whatever Authorization header the HttpClient sets.
 internal sealed class ServerConnection(
     HttpClient httpClient,
+    AuthenticationHeaderValue? authorization,
     TimeSpan stallTimeout,
     JsonSerializerOptions dataSerializerOptions,
     ILogger<Client> logger)
@@ -56,12 +63,19 @@ internal sealed class ServerConnection(
     // Sends a request and fails with a ConnectionStalledException once nothing arrives from the
     // server for the stall timeout, whether while waiting for the response headers, while reading
     // a response that is read completely before it is returned (ResponseContentRead), or while
-    // reading the content of a streamed response (ResponseHeadersRead) later on.
+    // reading the content of a streamed response (ResponseHeadersRead) later on. The request
+    // carries the API token, unless withApiToken is false, as for the pings.
     public async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request,
         HttpCompletionOption completionOption,
-        CancellationToken token)
+        CancellationToken token,
+        bool withApiToken = true)
     {
+        if (withApiToken && authorization is not null)
+        {
+            request.Headers.Authorization = authorization;
+        }
+
         HttpResponseMessage response;
 
         using (var stallSource = CancellationTokenSource.CreateLinkedTokenSource(token))

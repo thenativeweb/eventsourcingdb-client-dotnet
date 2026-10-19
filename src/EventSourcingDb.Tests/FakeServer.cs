@@ -11,8 +11,8 @@ using System.Threading.Tasks;
 
 namespace EventSourcingDb.Tests;
 
-// A request as it arrived at a FakeServer.
-internal sealed record FakeRequest(string Method, string Path, string? Body);
+// A request as it arrived at a FakeServer, with its Authorization header, if it has one.
+internal sealed record FakeRequest(string Method, string Path, string? Body, string? Authorization = null);
 
 // Stands in for EventSourcingDB within the process, as the handler of an HttpClient. It records
 // every request and answers it with what respond returns.
@@ -97,7 +97,8 @@ internal sealed class FakeServer(Func<FakeRequest, CancellationToken, Task<HttpR
             await request.Content.CopyToAsync(buffer, cancellationToken);
             body = Encoding.UTF8.GetString(buffer.ToArray());
         }
-        var fakeRequest = new FakeRequest(request.Method.Method, request.RequestUri!.AbsolutePath, body);
+        var authorization = request.Headers.TryGetValues("Authorization", out var values) ? string.Join(", ", values) : null;
+        var fakeRequest = new FakeRequest(request.Method.Method, request.RequestUri!.AbsolutePath, body, authorization);
 
         _requests.Enqueue(fakeRequest);
 
