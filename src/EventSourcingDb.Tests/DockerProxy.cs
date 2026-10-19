@@ -68,9 +68,10 @@ internal sealed class DockerProxy : IAsyncDisposable
                 _connections.Add(ServeAsync(client, token));
             }
         }
-        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        catch (Exception) when (token.IsCancellationRequested)
         {
-            // Ignored, the proxy is being disposed
+            // Ignored, the proxy is being disposed. Disposing it also stops the listener, so an
+            // accept that starts right after a connection arrived fails as not listening.
         }
     }
 

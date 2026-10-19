@@ -49,9 +49,10 @@ internal sealed class FakeServerListener : IAsyncDisposable
                 _connections.Add(ServeAsync(tcpClient, token));
             }
         }
-        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        catch (Exception) when (token.IsCancellationRequested)
         {
-            // Ignored, the server is being disposed
+            // Ignored, the server is being disposed. Disposing it also stops the listener, so an
+            // accept that starts right after a connection arrived fails as not listening.
         }
     }
 
