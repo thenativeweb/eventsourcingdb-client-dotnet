@@ -28,6 +28,13 @@ internal static class WriteOutcome
         }
         catch (Exception exception)
         {
+            // Once the body refused to be sent again, what the write failed with tells about an
+            // attempt that never reached the server, while the first one may have been stored.
+            if (content.SentAgainCause is { } sentAgainCause)
+            {
+                throw new OutcomeUnknownException(sentAgainCause);
+            }
+
             if (await IsCertainlyNotStoredAsync(exception, content, isRefusal).ConfigureAwait(false))
             {
                 throw;

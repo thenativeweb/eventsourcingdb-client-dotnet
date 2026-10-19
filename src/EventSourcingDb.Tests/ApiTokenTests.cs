@@ -133,10 +133,10 @@ public sealed class ApiTokenTests
     }
 
     // A handler that sends a request again, such as the standard resilience handler, sends it
-    // with the same headers, so every attempt carries the API token exactly once, a write that it
-    // sends again included, and no attempt of the probe or of the ping carries it. The error is
-    // the refusal, and for a write, which may have been stored once it was sent twice, an
-    // OutcomeUnknownException that holds it.
+    // with the same headers, so every attempt carries the API token exactly once, and no attempt
+    // of the probe or of the ping carries it. The error is the refusal. A write is never sent a
+    // second time, so it carries the API token once, and fails with an OutcomeUnknownException,
+    // since its first attempt may have been stored.
     [Theory]
     [MemberData(nameof(AllRequestsWithAndWithoutDefaults))]
     public async Task SendsTheApiTokenWithEveryAttemptOfTheStandardResilienceHandler(string apiVersion, string request, bool isForAllClients)
@@ -185,23 +185,28 @@ public sealed class ApiTokenTests
 
         var exception = await Record.ExceptionAsync(() => TestRequests.RunAsync(client, request, TestContext.Current.CancellationToken));
 
+        var expectedAuthorization = request == "ping" ? null : $"Bearer {ApiToken}";
+
         if (Array.IndexOf(TestRequests.Writes, request) < 0)
         {
             Assert.IsType<DbApiException>(exception);
+            Assert.Collection(server.Requests,
+                probe => Assert.Equal(new FakeRequest("GET", FakeServer.ProbePath, null, null), probe),
+                probe => Assert.Equal(new FakeRequest("GET", FakeServer.ProbePath, null, null), probe),
+                sent => Assert.Equal(expectedAuthorization, sent.Authorization),
+                sent => Assert.Equal(expectedAuthorization, sent.Authorization)
+            );
         }
         else
         {
             var outcomeUnknownException = Assert.IsType<OutcomeUnknownException>(exception);
-            Assert.IsType<DbApiException>(outcomeUnknownException.InnerException);
+            Assert.IsType<NotSupportedException>(outcomeUnknownException.InnerException);
+            Assert.Collection(server.Requests,
+                probe => Assert.Equal(new FakeRequest("GET", FakeServer.ProbePath, null, null), probe),
+                probe => Assert.Equal(new FakeRequest("GET", FakeServer.ProbePath, null, null), probe),
+                sent => Assert.Equal(expectedAuthorization, sent.Authorization)
+            );
         }
-
-        var expectedAuthorization = request == "ping" ? null : $"Bearer {ApiToken}";
-        Assert.Collection(server.Requests,
-            probe => Assert.Equal(new FakeRequest("GET", FakeServer.ProbePath, null, null), probe),
-            probe => Assert.Equal(new FakeRequest("GET", FakeServer.ProbePath, null, null), probe),
-            sent => Assert.Equal(expectedAuthorization, sent.Authorization),
-            sent => Assert.Equal(expectedAuthorization, sent.Authorization)
-        );
     }
 
     // An HttpClient that the application passes in brings its own Authorization header, which
