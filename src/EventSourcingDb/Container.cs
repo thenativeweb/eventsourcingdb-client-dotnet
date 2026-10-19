@@ -15,10 +15,16 @@ public class Container
 {
     private const string ImageName = "thenativeweb/eventsourcingdb";
     private const string SigningKeyFileName = "/signing-key.pem";
+
+    internal static readonly TimeSpan DefaultStartupTimeout = TimeSpan.FromSeconds(30);
+
+    private static readonly TimeSpan _maxStartupTimeout = TimeSpan.FromMilliseconds(uint.MaxValue - 1);
+
     private string _imageTag = "latest";
     private ushort _internalPort = 3000;
     private string _apiToken = "secret";
     private Key? _key;
+    private TimeSpan _startupTimeout = DefaultStartupTimeout;
     private IContainer? _container;
 
     public Container WithImageTag(string tag)
@@ -48,6 +54,29 @@ public class Container
         return this;
     }
 
+    /// <summary>
+    /// Sets how long <see cref="StartAsync"/> waits for the database in a container to become
+    /// reachable, from creating the container until the database answers a ping. Pulling the image
+    /// does not count. A container that runs, but whose database does not become reachable in time,
+    /// is replaced, up to 3 containers in total. Defaults to 30 seconds.
+    /// </summary>
+    public Container WithStartupTimeout(TimeSpan timeout)
+    {
+        if (timeout <= TimeSpan.Zero || timeout > _maxStartupTimeout)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(timeout),
+                timeout,
+                FormattableString.Invariant($"The startup timeout must be greater than zero and at most {_maxStartupTimeout.TotalMilliseconds} milliseconds.")
+            );
+        }
+
+        _startupTimeout = timeout;
+        return this;
+    }
+
+    internal TimeSpan StartupTimeout => _startupTimeout;
+
     public async Task StartAsync(CancellationToken token = default)
     {
         string[] command = [
@@ -59,9 +88,7 @@ public class Container
             "--http-port", _internalPort.ToString(CultureInfo.InvariantCulture)
         ];
 
-        var builder = new ContainerBuilder($"{ImageName}:{_imageTag}")
-            .WithExposedPort(_internalPort)
-            .WithPortBinding(_internalPort, assignRandomHostPort: true);
+        var builder = new ContainerBuilder($"{ImageName}:{_imageTag}");
 
         if (_key is not null)
         {
@@ -71,14 +98,9 @@ public class Container
         }
 
         builder = builder.WithCommand(command)
-            .WithWaitStrategy(Wait.ForUnixContainer()
-                .UntilHttpRequestIsSucceeded(request =>
-                    request.ForPort(_internalPort)
-                           .ForPath("/api/v1/ping")))
             .WithCleanUp(true);
 
-        _container = builder.Build();
-        await _container.StartAsync(token).ConfigureAwait(false);
+        _container = await ContainerStart.StartAsync(builder, _internalPort, _startupTimeout, token).ConfigureAwait(false);
     }
 
     public string GetHost()
