@@ -32,8 +32,9 @@ internal sealed class V1Transport(ServerConnection connection) : IClient
 
         try
         {
+            // The ping needs no API token, so it sends none.
             using var request = new HttpRequestMessage(HttpMethod.Get, pingUrl);
-            using var response = await connection.SendAsync(request, HttpCompletionOption.ResponseContentRead, token).ConfigureAwait(false);
+            using var response = await connection.SendAsync(request, HttpCompletionOption.ResponseContentRead, token, withApiToken: false).ConfigureAwait(false);
             await ThrowIfNotOkAsync(response, V1Request.Ping, token).ConfigureAwait(false);
 
             var pingResponse = await response.Content

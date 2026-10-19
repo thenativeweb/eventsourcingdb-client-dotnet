@@ -41,12 +41,15 @@ public static class ServiceCollectionExtensions
                 var options = sp.GetRequiredService<IOptions<EventSourcingDbOptions>>().Value;
 
                 client.BaseAddress = options.BaseUrl;
-                client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", options.ApiToken);
 
                 var logger = sp.GetRequiredService<ILogger<Client>>();
                 var clientOptions = new ClientOptions { StallTimeout = options.StallTimeout };
 
-                return new Client(client, clientOptions, jsonSerializerOptions, logger, apiVersionDetector);
+                // The API token goes with each request instead of being a default header of the
+                // HttpClient, see ServerConnection.
+                var authorization = new AuthenticationHeaderValue("Bearer", options.ApiToken);
+
+                return new Client(client, authorization, clientOptions, jsonSerializerOptions, logger, apiVersionDetector);
             }
         )
         // The client bounds every request by its stall timeout, so the default timeout of HttpClient
