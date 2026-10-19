@@ -14,8 +14,9 @@ namespace EventSourcingDb;
 
 // Talks to a server through the v2 API, which EventSourcingDB offers since 1.3. Its answers are
 // envelopes of a type and data, and its streams end with an end item, except for observing,
-// which never ends. Reads use the HTTP method QUERY.
-internal sealed class V2Transport(ServerConnection connection) : IClient
+// which never ends. Reads use the HTTP method QUERY. Once the server answers a request with 404
+// or 405, the transport calls forgetV2, see ThrowIfNotOkAsync.
+internal sealed class V2Transport(ServerConnection connection, Action forgetV2) : IClient
 {
     private static readonly HttpMethod _query = new HttpMethod("QUERY");
     private static readonly JsonSerializerOptions _defaultSerializerOptions = ServerConnection.DefaultSerializerOptions;
@@ -433,8 +434,19 @@ internal sealed class V2Transport(ServerConnection connection) : IClient
 
     // The v2 API answers every request that it accepts with 200 and reports what goes wrong
     // within its answer. Any other status refuses the request, with a text as the description.
-    private static async Task ThrowIfNotOkAsync(HttpResponseMessage response, CancellationToken token)
+    //
+    // A server that answers a path of the v2 API with 404 or 405 no longer offers it, for example
+    // because it was rolled back to a version without it, so the client forgets the API, and the
+    // next request finds out again which API the server offers. Like the probe, this holds for an
+    // answer that does not come from EventSourcingDB, too. The request itself fails as it would
+    // otherwise.
+    private async Task ThrowIfNotOkAsync(HttpResponseMessage response, CancellationToken token)
     {
+        if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed)
+        {
+            forgetV2();
+        }
+
         response.ThrowIfNotValidServerHeader();
 
         if (response.StatusCode is HttpStatusCode.OK)

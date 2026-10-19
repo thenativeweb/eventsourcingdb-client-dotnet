@@ -352,6 +352,216 @@ public sealed class ApiVersionDetectionTests
         Assert.Single(server.Requests, request => request.Path == "/api/v1/ping");
     }
 
+    public static TheoryData<string> AllRequests => new(TestRequests.All);
+
+    public static TheoryData<string, HttpStatusCode> AllRequestsWith404Or405
+    {
+        get
+        {
+            var data = new TheoryData<string, HttpStatusCode>();
+            foreach (var request in TestRequests.All)
+            {
+                data.Add(request, HttpStatusCode.NotFound);
+                data.Add(request, HttpStatusCode.MethodNotAllowed);
+            }
+
+            return data;
+        }
+    }
+
+    // A server that is rolled back to a version without the v2 API, such as from EventSourcingDB
+    // 1.3 to 1.2, answers its paths with 404, or with 405 where its UI serves other methods.
+    [Theory]
+    [MemberData(nameof(AllRequestsWith404Or405))]
+    public async Task FindsOutAgainWhichApiTheServerOffersOnceItAnswersARequestThroughTheV2ApiWith404Or405(string request, HttpStatusCode status)
+    {
+        var description = status is HttpStatusCode.NotFound ? "404 page not found" : "Method Not Allowed";
+        var isRolledBack = false;
+        var server = new FakeServer(sentRequest =>
+        {
+            if (!isRolledBack)
+            {
+                return FakeServer.IsProbe(sentRequest)
+                    ? FakeServer.AnswerProbe("v2")
+                    : throw new InvalidOperationException("No request expected.");
+            }
+
+            return sentRequest.Path.StartsWith("/api/v2/", StringComparison.Ordinal)
+                ? FakeServer.Text(status, description + "\n")
+                : FakeServer.Json(HttpStatusCode.OK, V1Ping);
+        });
+        var client = server.CreateClient();
+
+        // On v2, the ping goes to the path of the probe, and gets the same answer.
+        await client.PingAsync(TestContext.Current.CancellationToken);
+        isRolledBack = true;
+
+        var exception = await Record.ExceptionAsync(() => TestRequests.RunAsync(client, request, TestContext.Current.CancellationToken));
+
+        // The request fails as it would otherwise, and a write leaves open whether it was stored.
+        var dbApiException = Array.IndexOf(TestRequests.Writes, request) < 0
+            ? Assert.IsType<DbApiException>(exception)
+            : Assert.IsType<DbApiException>(Assert.IsType<OutcomeUnknownException>(exception).InnerException);
+        Assert.Equal(status, dbApiException.Status);
+        Assert.Equal(description, dbApiException.Description);
+
+        await client.PingAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(5, server.Requests.Count);
+        Assert.Equal(new FakeRequest("GET", FakeServer.ProbePath, null), server.Requests[3]);
+        Assert.Equal(new FakeRequest("GET", "/api/v1/ping", null), server.Requests[4]);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.NotFound)]
+    [InlineData(HttpStatusCode.MethodNotAllowed)]
+    public async Task FindsOutAgainWhichApiTheServerOffersAlsoAfterAnAnswerOf404Or405ThatIsNotFromEventSourcingDb(HttpStatusCode status)
+    {
+        // Such as a proxy in front of a server that was rolled back, which passes on only the
+        // paths of the v1 API, and answers every other one itself, as with the probe.
+        var isRolledBack = false;
+        var server = new FakeServer(sentRequest =>
+        {
+            if (!isRolledBack)
+            {
+                return FakeServer.IsProbe(sentRequest)
+                    ? FakeServer.AnswerProbe("v2")
+                    : throw new InvalidOperationException("No request expected.");
+            }
+
+            return sentRequest.Path.StartsWith("/api/v2/", StringComparison.Ordinal)
+                ? FakeServer.Respond(status, "<html>Not Found</html>", "text/html", isFromEventSourcingDb: false)
+                : FakeServer.Json(HttpStatusCode.OK, V1Ping);
+        });
+        var client = server.CreateClient();
+
+        await client.PingAsync(TestContext.Current.CancellationToken);
+        isRolledBack = true;
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.VerifyApiTokenAsync(TestContext.Current.CancellationToken));
+        await client.PingAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(5, server.Requests.Count);
+        Assert.Equal(new FakeRequest("GET", FakeServer.ProbePath, null), server.Requests[3]);
+        Assert.Equal(new FakeRequest("GET", "/api/v1/ping", null), server.Requests[4]);
+    }
+
+    [Theory]
+    [MemberData(nameof(AllRequests))]
+    public async Task KeepsUsingTheV2ApiAfterAnErrorThatItReportsWithinAnAnswerOf200(string request)
+    {
+        var answerCount = 0;
+        var server = FakeServer.ForApi("v2", _ => Interlocked.Increment(ref answerCount) == 1
+            ? FakeServer.Ndjson(TestRequests.Item("v2", "error", """{"code":"https://docs.eventsourcingdb.io/errors/server-shutting-down","description":"the server is shutting down","details":{}}"""))
+            : FakeServer.Json(HttpStatusCode.OK, """{"type":"event","data":{"type":"io.eventsourcingdb.api.token-verified"}}"""));
+        var client = server.CreateClient();
+
+        var exception = await Record.ExceptionAsync(() => TestRequests.RunAsync(client, request, TestContext.Current.CancellationToken));
+
+        Assert.Equal(HttpStatusCode.OK, Assert.IsType<DbApiException>(exception).Status);
+
+        await client.VerifyApiTokenAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, server.Requests.Count);
+        Assert.Equal(new FakeRequest("POST", "/api/v2/system/verify-token", null), server.Requests[2]);
+    }
+
+    [Theory]
+    [MemberData(nameof(AllRequests))]
+    public async Task KeepsUsingTheV1ApiAfterAnAnswerOf404(string request)
+    {
+        // Such as for an event type that the server does not know.
+        var answerCount = 0;
+        var server = FakeServer.ForApi("v1", _ => Interlocked.Increment(ref answerCount) == 1
+            ? FakeServer.Text(HttpStatusCode.NotFound, "not found\n")
+            : FakeServer.Json(HttpStatusCode.OK, V1Ping));
+        var client = server.CreateClient();
+
+        var exception = await Record.ExceptionAsync(() => TestRequests.RunAsync(client, request, TestContext.Current.CancellationToken));
+
+        Assert.Equal(HttpStatusCode.NotFound, Assert.IsType<DbApiException>(exception).Status);
+
+        await client.PingAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, server.Requests.Count);
+        Assert.Equal(new FakeRequest("GET", "/api/v1/ping", null), server.Requests[2]);
+    }
+
+    // The requests that were sent through the v2 API before the server was rolled back fail one
+    // after the other. The first of them lets the next request find out the API again, and one that
+    // fails while it does so must neither start another probe nor drop the one that runs.
+    [Fact]
+    public async Task SharesTheProbeThatRunsWhenAnotherRequestThroughTheV2ApiFailsWith404Meanwhile()
+    {
+        var verifyArrived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var answerVerify = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var readArrived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var answerRead = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var probeArrived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var answerProbe = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var probeCount = 0;
+
+        var server = new FakeServer(async (request, token) =>
+        {
+            if (FakeServer.IsProbe(request))
+            {
+                var probe = Interlocked.Increment(ref probeCount);
+                if (probe == 1)
+                {
+                    return FakeServer.AnswerProbe("v2");
+                }
+
+                if (probe == 2)
+                {
+                    probeArrived.TrySetResult();
+                    await answerProbe.Task.WaitAsync(token);
+                }
+
+                return FakeServer.AnswerProbe("v1");
+            }
+
+            if (request.Path == "/api/v2/system/verify-token")
+            {
+                verifyArrived.TrySetResult();
+                await answerVerify.Task.WaitAsync(token);
+
+                return FakeServer.Text(HttpStatusCode.NotFound, "404 page not found\n");
+            }
+
+            if (request.Path == "/api/v2/data/read-event-types")
+            {
+                readArrived.TrySetResult();
+                await answerRead.Task.WaitAsync(token);
+
+                return FakeServer.Text(HttpStatusCode.NotFound, "404 page not found\n");
+            }
+
+            return FakeServer.Json(HttpStatusCode.OK, V1Ping);
+        });
+        var client = server.CreateClient();
+
+        var first = client.VerifyApiTokenAsync(TestContext.Current.CancellationToken);
+        await verifyArrived.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        var second = TestRequests.RunAsync(client, "read-event-types", TestContext.Current.CancellationToken);
+        await readArrived.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        answerVerify.SetResult();
+        Assert.Equal(HttpStatusCode.NotFound, (await Assert.ThrowsAsync<DbApiException>(() => first)).Status);
+
+        var third = client.PingAsync(TestContext.Current.CancellationToken);
+        await probeArrived.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        answerRead.SetResult();
+        Assert.Equal(HttpStatusCode.NotFound, (await Assert.ThrowsAsync<DbApiException>(() => second)).Status);
+
+        var fourth = client.PingAsync(TestContext.Current.CancellationToken);
+        answerProbe.SetResult();
+        await Task.WhenAll(third, fourth);
+
+        Assert.Equal(2, Volatile.Read(ref probeCount));
+        Assert.Equal(2, server.Requests.Count(request => request.Path == "/api/v1/ping"));
+    }
+
     private static (Func<HttpResponseMessage> Answer, Type ExpectedExceptionType) GetFailedProbe(string failure)
     {
         return failure switch

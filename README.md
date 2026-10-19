@@ -49,7 +49,7 @@ Optionally, you might provide a `CancellationToken`.
 
 ### Talking to Servers With and Without the v2 API
 
-The client SDK works with servers that offer the v2 API of EventSourcingDB, which EventSourcingDB offers since version 1.3, and with servers that only offer the v1 API. Creating a client does not make any request. Instead, the first request of a client finds out which API the server offers, by sending a `GET` request to `/api/v2/system/ping`, and the client remembers the answer for all of its following requests. If this fails, for example because the server is not reachable, the first request fails with that error, and the next request tries again.
+The client SDK works with servers that offer the v2 API of EventSourcingDB, which EventSourcingDB offers since version 1.3, and with servers that only offer the v1 API. Creating a client does not make any request. Instead, the first request of a client finds out which API the server offers, by sending a `GET` request to `/api/v2/system/ping`, and the client remembers the answer for all of its following requests. If this fails, for example because the server is not reachable, the first request fails with that error, and the next request tries again. If the server answers a path of the v2 API with a status of `404` or `405`, for example after it was rolled back to a version without it, the next request finds out again which API the server offers.
 
 *Note that with dependency injection, every resolved `IClient` is a client of its own. The clients of one call to `AddEventSourcingDb` share the answer, so only the first request of the first of them finds out the API.*
 

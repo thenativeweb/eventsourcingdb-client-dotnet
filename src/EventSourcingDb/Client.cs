@@ -18,8 +18,9 @@ namespace EventSourcingDb;
 // The client talks to each server through the API that the server offers: v2 since
 // EventSourcingDB 1.3, and v1 before. Creating it makes no request; the first request of an
 // instance, or of any client of the same registration for dependency injection, finds out which
-// API the server offers, and every request uses that API from then on. This is the one place
-// that chooses between the two.
+// API the server offers, and every request uses that API from then on. Only if the server
+// answers a request through the v2 API with 404 or 405, as after a rollback to a version without
+// it, does the next request find out again. This is the one place that chooses between the two.
 public class Client : IClient
 {
     private const string ProbeUrl = "/api/v2/system/ping";
@@ -29,7 +30,6 @@ public class Client : IClient
     private readonly ServerConnection _connection;
     private readonly ApiVersionDetector _apiVersionDetector;
     private readonly V1Transport _v1Transport;
-    private readonly V2Transport _v2Transport;
 
     public Client(Uri baseUrl, string apiToken) : this(baseUrl, apiToken, new ClientOptions(), null, null)
     {
@@ -95,7 +95,6 @@ public class Client : IClient
         );
         _apiVersionDetector = apiVersionDetector;
         _v1Transport = new V1Transport(_connection);
-        _v2Transport = new V2Transport(_connection);
     }
 
     // A request fails once nothing arrives from the server for this long, from sending it until
@@ -203,12 +202,17 @@ public class Client : IClient
 
     private async Task<IClient> GetTransportAsync(CancellationToken token)
     {
-        var apiVersion = await _apiVersionDetector.DetectAsync(ProbeAsync, token).ConfigureAwait(false);
+        var detection = _apiVersionDetector.Detect(ProbeAsync);
+
+        // A caller who cancels only stops waiting for the probe, which goes on for the others.
+        var apiVersion = await detection.WaitAsync(token).ConfigureAwait(false);
 
         return apiVersion switch
         {
             ApiVersion.V1 => _v1Transport,
-            ApiVersion.V2 => _v2Transport,
+            // Every request through the v2 API knows the answer that it was sent on, so that a 404
+            // or 405 forgets this answer, and not one that a newer probe found meanwhile.
+            ApiVersion.V2 => new V2Transport(_connection, () => _apiVersionDetector.ForgetV2(detection)),
             _ => throw new InvalidOperationException($"Unhandled API version '{apiVersion}'."),
         };
     }
