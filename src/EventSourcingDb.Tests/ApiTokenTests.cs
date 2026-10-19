@@ -4,10 +4,12 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Threading;
 using System.Threading.Tasks;
 using EventSourcingDb.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Http.Resilience;
 using Xunit;
 
 namespace EventSourcingDb.Tests;
@@ -76,6 +78,24 @@ public sealed class ApiTokenTests
         }
     }
 
+    public static TheoryData<string, string, bool> AllRequestsWithAndWithoutDefaults
+    {
+        get
+        {
+            var data = new TheoryData<string, string, bool>();
+            foreach (var apiVersion in _apiVersions)
+            {
+                foreach (var request in TestRequests.All)
+                {
+                    data.Add(apiVersion, request, true);
+                    data.Add(apiVersion, request, false);
+                }
+            }
+
+            return data;
+        }
+    }
+
     [Theory]
     [MemberData(nameof(Setups))]
     public async Task SendsNoApiTokenWithTheProbeOfTheApiVersionAndThePing(string setup, string apiVersion)
@@ -112,6 +132,78 @@ public sealed class ApiTokenTests
         );
     }
 
+    // A handler that sends a request again, such as the standard resilience handler, sends it
+    // with the same headers, so every attempt carries the API token exactly once, a write that it
+    // sends again included, and no attempt of the probe or of the ping carries it. The error is
+    // the refusal, and for a write, which may have been stored once it was sent twice, an
+    // OutcomeUnknownException that holds it.
+    [Theory]
+    [MemberData(nameof(AllRequestsWithAndWithoutDefaults))]
+    public async Task SendsTheApiTokenWithEveryAttemptOfTheStandardResilienceHandler(string apiVersion, string request, bool isForAllClients)
+    {
+        // The client sends the probe and the request one after the other, so every attempt with
+        // an odd number is the first one of either, and fails as a connection that broke. The
+        // second attempt of the probe gets its answer, and the second one of the request a refusal.
+        var attempts = 0;
+        var server = new FakeServer(_ =>
+        {
+            var attempt = Interlocked.Increment(ref attempts);
+            if (attempt % 2 == 1)
+            {
+                throw new HttpRequestException(HttpRequestError.ResponseEnded, "The answer was lost.");
+            }
+
+            return attempt == 2
+                ? FakeServer.AnswerProbe(apiVersion)
+                : FakeServer.Text(HttpStatusCode.BadRequest, "refused\n");
+        });
+
+        static void Configure(HttpStandardResilienceOptions options)
+        {
+            options.Retry.Delay = TimeSpan.FromMilliseconds(1);
+            options.Retry.UseJitter = false;
+        }
+
+        var services = new ServiceCollection();
+        services.AddLogging();
+
+        if (isForAllClients)
+        {
+            services.ConfigureHttpClientDefaults(builder => builder.AddStandardResilienceHandler(Configure));
+            services.AddEventSourcingDb(CreateConfiguration(new Uri("http://esdb.test")))
+                .ConfigurePrimaryHttpMessageHandler(() => server);
+        }
+        else
+        {
+            services.AddEventSourcingDb(CreateConfiguration(new Uri("http://esdb.test")))
+                .ConfigurePrimaryHttpMessageHandler(() => server)
+                .AddStandardResilienceHandler(Configure);
+        }
+
+        await using var serviceProvider = services.BuildServiceProvider();
+        var client = serviceProvider.GetRequiredService<IClient>();
+
+        var exception = await Record.ExceptionAsync(() => TestRequests.RunAsync(client, request, TestContext.Current.CancellationToken));
+
+        if (Array.IndexOf(TestRequests.Writes, request) < 0)
+        {
+            Assert.IsType<DbApiException>(exception);
+        }
+        else
+        {
+            var outcomeUnknownException = Assert.IsType<OutcomeUnknownException>(exception);
+            Assert.IsType<DbApiException>(outcomeUnknownException.InnerException);
+        }
+
+        var expectedAuthorization = request == "ping" ? null : $"Bearer {ApiToken}";
+        Assert.Collection(server.Requests,
+            probe => Assert.Equal(new FakeRequest("GET", FakeServer.ProbePath, null, null), probe),
+            probe => Assert.Equal(new FakeRequest("GET", FakeServer.ProbePath, null, null), probe),
+            sent => Assert.Equal(expectedAuthorization, sent.Authorization),
+            sent => Assert.Equal(expectedAuthorization, sent.Authorization)
+        );
+    }
+
     // An HttpClient that the application passes in brings its own Authorization header, which
     // the client leaves alone. A default header cannot be left out of a single request, so it
     // goes with the pings as well.
@@ -141,7 +233,16 @@ public sealed class ApiTokenTests
             return null;
         }
 
-        var configuration = new ConfigurationBuilder()
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddEventSourcingDb(CreateConfiguration(baseUrl));
+
+        return services.BuildServiceProvider();
+    }
+
+    private static IConfiguration CreateConfiguration(Uri baseUrl)
+    {
+        return new ConfigurationBuilder()
             .AddInMemoryCollection(
                 [
                     new KeyValuePair<string, string?>("EventSourcingDb:BaseUrl", baseUrl.ToString()),
@@ -149,12 +250,6 @@ public sealed class ApiTokenTests
                 ]
             )
             .Build();
-
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddEventSourcingDb(configuration);
-
-        return services.BuildServiceProvider();
     }
 
     private static IClient CreateClient(ServiceProvider? serviceProvider, Uri baseUrl)

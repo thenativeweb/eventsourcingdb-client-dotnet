@@ -11,7 +11,8 @@ using System.Threading.Tasks;
 
 namespace EventSourcingDb.Tests;
 
-// A request as it arrived at a FakeServer, with its Authorization header, if it has one.
+// A request as it arrived at a FakeServer, with its Authorization header, if it has one. Several
+// values of the header are joined, so that a header sent more than once shows.
 internal sealed record FakeRequest(string Method, string Path, string? Body, string? Authorization = null);
 
 // Stands in for EventSourcingDB within the process, as the handler of an HttpClient. It records
