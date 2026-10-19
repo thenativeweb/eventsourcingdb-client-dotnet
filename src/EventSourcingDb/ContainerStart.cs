@@ -49,7 +49,7 @@ internal static class ContainerStart
             }
         }
 
-        throw new ContainerStartFailedException(FormattableString.Invariant(
+        throw new InvalidOperationException(FormattableString.Invariant(
             $"Failed to start the container, the database did not become reachable within {startupTimeout.TotalSeconds}s in any of {MaxAttempts} containers"
         ));
     }
@@ -117,11 +117,9 @@ internal static class ContainerStart
                 throw WithRemovalException(new OperationCanceledException(token), removalException);
             }
 
-            // The container exited.
-            if (exception is ContainerStartFailedException)
+            if (exception is ContainerExitedException)
             {
-                WithRemovalException(exception, removalException);
-                throw;
+                throw WithRemovalException(new InvalidOperationException(exception.Message), removalException);
             }
 
             if (attempt.HasTimedOut && exception is OperationCanceledException or TimeoutException)
@@ -132,11 +130,11 @@ internal static class ContainerStart
                 }
 
                 // Docker failed to remove the container, so it is not replaced.
-                throw new ContainerStartFailedException($"Failed to start the container: {removalException.Message}", removalException);
+                throw new InvalidOperationException($"Failed to start the container: {removalException.Message}", removalException);
             }
 
             throw WithRemovalException(
-                new ContainerStartFailedException($"Failed to start the container: {exception.Message}", exception),
+                new InvalidOperationException($"Failed to start the container: {exception.Message}", exception),
                 removalException
             );
         }

@@ -60,7 +60,7 @@ public class ContainerTests : IAsyncDisposable
             .WithImageTag(imageTag)
             .WithStartupTimeout(TimeSpan.FromMilliseconds(1));
 
-        var exception = await Assert.ThrowsAsync<ContainerStartFailedException>(() =>
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             _container.StartAsync(TestContext.Current.CancellationToken)
         );
 

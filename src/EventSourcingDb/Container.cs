@@ -58,7 +58,9 @@ public class Container
     /// Sets how long <see cref="StartAsync"/> waits for the database in a container to become
     /// reachable, from creating the container until the database answers a ping. Pulling the image
     /// does not count. A container that runs, but whose database does not become reachable in time,
-    /// is replaced, up to 3 containers in total. Defaults to 30 seconds.
+    /// is replaced, up to 3 containers in total, after which <see cref="StartAsync"/> throws an
+    /// <see cref="InvalidOperationException"/>, as it does at once if the container exits or Docker
+    /// fails. Defaults to 30 seconds.
     /// </summary>
     public Container WithStartupTimeout(TimeSpan timeout)
     {

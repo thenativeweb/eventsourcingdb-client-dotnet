@@ -86,7 +86,7 @@ public sealed class UntilDatabaseIsReachableTests : IDisposable
             .Append("2026-10-19T10:00:23.51Z stderr 13\n");
         fake.Logs = (string.Concat(stdout), string.Concat(stderr));
 
-        var exception = await Assert.ThrowsAsync<ContainerStartFailedException>(() => CreateWait().UntilAsync(container));
+        var exception = await Assert.ThrowsAsync<ContainerExitedException>(() => CreateWait().UntilAsync(container));
 
         var expectedLines = Enumerable.Range(0, 12)
             .SelectMany(index => new[] { $"stdout {index}", $"stderr {index}" })

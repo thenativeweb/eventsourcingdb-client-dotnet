@@ -31,7 +31,7 @@ internal sealed class UntilDatabaseIsReachable(
             // The container exited before the startup timeout ran out, so its log is read even if
             // the attempt ends meanwhile.
             var logTail = await ReadLogTailAsync(container, token).ConfigureAwait(false);
-            throw new ContainerStartFailedException($"Failed to start the container, it exited before the database became reachable: {logTail}");
+            throw new ContainerExitedException(logTail);
         }
 
         // A container that does not run, for example since Docker is removing it, has no published

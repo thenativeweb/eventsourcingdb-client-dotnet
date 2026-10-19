@@ -61,7 +61,7 @@ public sealed class ContainerStartTests : IAsyncDisposable
     public async Task ReplacesARunningContainerWhoseDatabaseDoesNotBecomeReachableUpTo3ContainersAndRemovesEachOfThem()
     {
         // The database listens on another port than the one that is published.
-        var exception = await Assert.ThrowsAsync<ContainerStartFailedException>(() =>
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             ContainerStart.StartAsync(CreateBuilder(httpPort: 3001), 3000, TimeSpan.FromSeconds(1.5), TestContext.Current.CancellationToken)
         );
 
@@ -76,7 +76,7 @@ public sealed class ContainerStartTests : IAsyncDisposable
     [Fact]
     public async Task RemovesAContainerWhoseCreationOutlastsTheStartupTimeout()
     {
-        var exception = await Assert.ThrowsAsync<ContainerStartFailedException>(() =>
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             ContainerStart.StartAsync(CreateBuilder(), 3000, TimeSpan.FromMilliseconds(1), TestContext.Current.CancellationToken)
         );
 
@@ -103,7 +103,7 @@ public sealed class ContainerStartTests : IAsyncDisposable
                 return image is null;
             });
 
-        var exception = await Assert.ThrowsAsync<ContainerStartFailedException>(() =>
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             ContainerStart.StartAsync(builder, 3000, TimeSpan.FromMilliseconds(250), TestContext.Current.CancellationToken)
         );
 
@@ -117,7 +117,7 @@ public sealed class ContainerStartTests : IAsyncDisposable
     [Fact]
     public async Task FailsAtOnceWithTheEndOfTheLogIfTheContainerExitsAndRemovesIt()
     {
-        var exception = await Assert.ThrowsAsync<ContainerStartFailedException>(() =>
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             ContainerStart.StartAsync(CreateBuilder(extraArguments: "--no-such-flag"), 3000, TimeSpan.FromSeconds(20), TestContext.Current.CancellationToken)
         );
 
@@ -139,7 +139,7 @@ public sealed class ContainerStartTests : IAsyncDisposable
     {
         var builder = CreateBuilder(image: $"thenativeweb/eventsourcingdb:non-existent-{Guid.NewGuid()}");
 
-        var exception = await Assert.ThrowsAsync<ContainerStartFailedException>(() =>
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             ContainerStart.StartAsync(builder, 3000, TimeSpan.FromSeconds(20), TestContext.Current.CancellationToken)
         );
 
@@ -158,7 +158,7 @@ public sealed class ContainerStartTests : IAsyncDisposable
         // the container, so the start finds the container by its label only.
         var builder = CreateBuilder().WithResourceMapping("content"u8.ToArray(), "/bin/busybox/file");
 
-        var exception = await Assert.ThrowsAsync<ContainerStartFailedException>(() =>
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             ContainerStart.StartAsync(builder, 3000, TimeSpan.FromSeconds(20), TestContext.Current.CancellationToken)
         );
 
@@ -179,7 +179,7 @@ public sealed class ContainerStartTests : IAsyncDisposable
         var builder = CreateBuilder(httpPort: 3001)
             .WithStartupCallback((container, token) => container.CopyAsync("content"u8.ToArray(), "/bin/busybox/file", ct: token));
 
-        var exception = await Assert.ThrowsAsync<ContainerStartFailedException>(() =>
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             ContainerStart.StartAsync(builder, 3000, TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken)
         );
 
@@ -247,7 +247,7 @@ public sealed class ContainerStartTests : IAsyncDisposable
         await using var proxy = new DockerProxy(TimeSpan.FromSeconds(8), holdCount: 1);
         var builder = CreateBuilderForProxy(proxy, httpPort: 3001);
 
-        var exception = await Assert.ThrowsAsync<ContainerStartFailedException>(() =>
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             ContainerStart.StartAsync(builder, 3000, TimeSpan.FromSeconds(0.5), TestContext.Current.CancellationToken)
         );
 
