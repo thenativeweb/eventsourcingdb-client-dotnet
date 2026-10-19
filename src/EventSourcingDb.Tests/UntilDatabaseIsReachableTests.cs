@@ -24,6 +24,20 @@ public sealed class UntilDatabaseIsReachableTests : IDisposable
         Assert.False(await CreateWait().UntilAsync(container));
     }
 
+    [Theory]
+    [InlineData(TestcontainersStates.Created)]
+    [InlineData(TestcontainersStates.Dead)]
+    [InlineData(TestcontainersStates.Undefined)]
+    public async Task WaitsWhileTheContainerDoesNotRun(TestcontainersStates state)
+    {
+        await using var okServer = new FakeServerListener(new FakeServer(_ => new HttpResponseMessage(HttpStatusCode.OK)));
+        var (container, fake) = FakeContainer.Create();
+        fake.State = state;
+        fake.MappedPorts = new Dictionary<ushort, ushort> { [Port] = (ushort)okServer.BaseUrl.Port };
+
+        Assert.False(await CreateWait().UntilAsync(container));
+    }
+
     [Fact]
     public async Task CountsOnlyTheStatus200()
     {

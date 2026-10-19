@@ -39,7 +39,6 @@ internal sealed class DockerEvents : IAsyncDisposable, IProgress<Message>
             Filters = new FilterByProperty()
                 .Add("type", "container")
                 .Add("event", "create")
-                .Add("event", "start")
                 .Add("event", "destroy")
                 .Add("label", label),
         };
@@ -58,26 +57,6 @@ internal sealed class DockerEvents : IAsyncDisposable, IProgress<Message>
     {
         _messages.Enqueue(value);
         Volatile.Write(ref _lastArrival, Environment.TickCount64);
-    }
-
-    // Returns the id of the first container that Docker started.
-    public async Task<string> WaitForStartAsync(CancellationToken token)
-    {
-        var deadline = Environment.TickCount64 + (long)_guardTimeout.TotalMilliseconds;
-
-        while (Environment.TickCount64 < deadline)
-        {
-            var started = _messages.FirstOrDefault(message => message.Action == "start");
-
-            if (started is not null)
-            {
-                return started.Actor.ID;
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(20), token);
-        }
-
-        throw new TimeoutException("Docker started no container.");
     }
 
     // Waits until Docker created at least the given number of containers, until it removed every

@@ -170,23 +170,17 @@ public sealed class ContainerStartTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task FailsAtOnceWithTheErrorOfDockerIfInspectingTheContainerFailsWhileWaiting()
+    public async Task FailsAtOnceWithTheErrorOfDockerIfDockerFailsWhileTheStartWaitsForTheDatabaseAndRemovesTheContainer()
     {
-        // The database never becomes reachable, so the start waits until Docker fails to inspect the
-        // container that this test removes.
-        var starting = ContainerStart.StartAsync(CreateBuilder(httpPort: 3001), 3000, TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        // Testcontainers calls the startup callback once the container runs, and before the start
+        // pings the database, which never becomes reachable here. Docker cannot copy a file into
+        // another file.
+        var builder = CreateBuilder(httpPort: 3001)
+            .WithStartupCallback((container, token) => container.CopyAsync("content"u8.ToArray(), "/bin/busybox/file", ct: token));
 
-        var containerId = await _events.WaitForStartAsync(TestContext.Current.CancellationToken);
-        using (var dockerClient = ContainerStart.CreateDockerClient())
-        {
-            await dockerClient.Containers.RemoveContainerAsync(
-                containerId,
-                new ContainerRemoveParameters { Force = true },
-                TestContext.Current.CancellationToken
-            );
-        }
-
-        var exception = await Assert.ThrowsAsync<ContainerStartFailedException>(() => starting);
+        var exception = await Assert.ThrowsAsync<ContainerStartFailedException>(() =>
+            ContainerStart.StartAsync(builder, 3000, TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken)
+        );
 
         var dockerException = Assert.IsAssignableFrom<DockerApiException>(exception.InnerException);
         Assert.Equal($"Failed to start the container: {dockerException.Message}", exception.Message);

@@ -25,7 +25,8 @@ internal sealed class UntilDatabaseIsReachable(
 
     public async Task<bool> UntilAsync(IContainer container)
     {
-        if (container.State is TestcontainersStates.Exited or TestcontainersStates.Dead)
+        // Docker marks a container as dead while it removes it, which is no exit of its own.
+        if (container.State is TestcontainersStates.Exited)
         {
             // The container exited before the startup timeout ran out, so its log is read even if
             // the attempt ends meanwhile.
@@ -33,8 +34,8 @@ internal sealed class UntilDatabaseIsReachable(
             throw new ContainerStartFailedException($"Failed to start the container, it exited before the database became reachable: {logTail}");
         }
 
-        // A container that does not run yet or any more, for example since Docker is removing it,
-        // has no published port, and inspecting it may fail next time.
+        // A container that does not run, for example since Docker is removing it, has no published
+        // port, and inspecting it fails next time once it is gone.
         if (container.State is not TestcontainersStates.Running
             || !container.GetMappedPublicPorts().TryGetValue(port, out var mappedPort))
         {
