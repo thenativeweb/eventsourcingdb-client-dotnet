@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace EventSourcingDb;
 
@@ -7,14 +8,24 @@ namespace EventSourcingDb;
 // cancels. The clock starts when Testcontainers asks Docker to create the container, which is
 // after it pulled the image and started Ryuk, so neither counts. While Docker creates the
 // container, the attempt ends only once Docker has created it, since Docker might otherwise
-// create it only after the attempt looked for it to remove it.
+// create it only after the attempt looked for it to remove it. It waits for that for the grace
+// period at most, and then gives the attempt up.
 internal sealed class ContainerStartAttempt : IDisposable
 {
+    // How long an attempt waits at most for Docker to finish creating a container once the caller
+    // cancelled, or once the startup timeout ran out, before it stops waiting and leaves removing
+    // the container to the background.
+    public static readonly TimeSpan CreateGracePeriod = TimeSpan.FromSeconds(5);
+
     private readonly object _lock = new();
     private readonly TimeSpan _startupTimeout;
+    private readonly TimeSpan _gracePeriod;
     private readonly CancellationTokenSource _endSource = new();
     private readonly CancellationTokenSource _clockSource = new();
+    private readonly CancellationTokenSource _graceSource = new();
+    private readonly TaskCompletionSource _givenUp = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly CancellationTokenRegistration _clockRegistration;
+    private readonly CancellationTokenRegistration _graceRegistration;
     private readonly CancellationTokenRegistration _callerRegistration;
     private bool _isCreating;
     private bool _isEnding;
@@ -22,18 +33,29 @@ internal sealed class ContainerStartAttempt : IDisposable
     private volatile bool _hasTimedOut;
 
     public ContainerStartAttempt(TimeSpan startupTimeout, CancellationToken token)
+        : this(startupTimeout, CreateGracePeriod, token)
+    {
+    }
+
+    internal ContainerStartAttempt(TimeSpan startupTimeout, TimeSpan gracePeriod, CancellationToken token)
     {
         _startupTimeout = startupTimeout;
+        _gracePeriod = gracePeriod;
         _clockRegistration = _clockSource.Token.Register(() =>
         {
             _hasTimedOut = true;
             End();
         });
+        _graceRegistration = _graceSource.Token.Register(GiveUp);
         _callerRegistration = token.Register(End);
     }
 
     // Ends everything that Testcontainers does for the attempt.
     public CancellationToken Token => _endSource.Token;
+
+    // Completes once the attempt stopped waiting for Docker to create the container, since the
+    // grace period ran out.
+    public Task GivenUp => _givenUp.Task;
 
     // Whether Docker was asked to create the container, so that a container of the attempt may
     // exist.
@@ -79,10 +101,16 @@ internal sealed class ContainerStartAttempt : IDisposable
     {
         lock (_lock)
         {
+            if (_isEnding)
+            {
+                return;
+            }
+
             _isEnding = true;
 
             if (_isCreating)
             {
+                _graceSource.CancelAfter(_gracePeriod);
                 return;
             }
         }
@@ -90,11 +118,28 @@ internal sealed class ContainerStartAttempt : IDisposable
         _endSource.Cancel();
     }
 
+    private void GiveUp()
+    {
+        lock (_lock)
+        {
+            if (!_isCreating)
+            {
+                return;
+            }
+        }
+
+        // The attempt has given up before its start ends, so that it tells the two apart.
+        _givenUp.TrySetResult();
+        _endSource.Cancel();
+    }
+
     public void Dispose()
     {
         _callerRegistration.Dispose();
         _clockRegistration.Dispose();
+        _graceRegistration.Dispose();
         _clockSource.Dispose();
+        _graceSource.Dispose();
         _endSource.Dispose();
     }
 }

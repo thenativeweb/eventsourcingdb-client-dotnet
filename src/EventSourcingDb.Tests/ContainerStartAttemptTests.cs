@@ -30,24 +30,23 @@ public sealed class ContainerStartAttemptTests
     [Fact]
     public async Task EndsOnlyOnceDockerCreatedTheContainerIfTheTimeRunsOutWhileDockerCreatesIt()
     {
-        using var attempt = new ContainerStartAttempt(TimeSpan.FromMilliseconds(1), CancellationToken.None);
+        using var attempt = new ContainerStartAttempt(TimeSpan.FromMilliseconds(1), TimeSpan.FromMinutes(1), CancellationToken.None);
 
         attempt.BeginCreating();
-        await Task.Delay(TimeSpan.FromMilliseconds(250), TestContext.Current.CancellationToken);
+        await WaitUntilAsync(() => attempt.HasTimedOut);
 
-        Assert.True(attempt.HasTimedOut);
         Assert.False(attempt.Token.IsCancellationRequested);
 
         attempt.EndCreating();
 
-        Assert.True(attempt.Token.IsCancellationRequested);
+        await WaitUntilEndedAsync(attempt);
     }
 
     [Fact]
     public async Task EndsOnlyOnceDockerCreatedTheContainerIfTheCallerCancelsWhileDockerCreatesIt()
     {
         using var callerSource = new CancellationTokenSource();
-        using var attempt = new ContainerStartAttempt(TimeSpan.FromMinutes(1), callerSource.Token);
+        using var attempt = new ContainerStartAttempt(TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1), callerSource.Token);
 
         attempt.BeginCreating();
         await callerSource.CancelAsync();
@@ -61,6 +60,40 @@ public sealed class ContainerStartAttemptTests
     }
 
     [Fact]
+    public async Task GivesUpOnceTheGracePeriodRanOutWhileDockerStillCreatesTheContainer()
+    {
+        using var callerSource = new CancellationTokenSource();
+        using var attempt = new ContainerStartAttempt(TimeSpan.FromMinutes(1), TimeSpan.FromMilliseconds(50), callerSource.Token);
+
+        attempt.BeginCreating();
+        await callerSource.CancelAsync();
+
+        await attempt.GivenUp.WaitAsync(_guardTimeout, TestContext.Current.CancellationToken);
+        await WaitUntilEndedAsync(attempt);
+    }
+
+    [Fact]
+    public async Task DoesNotGiveUpOnceDockerCreatedTheContainerWithinTheGracePeriod()
+    {
+        using var callerSource = new CancellationTokenSource();
+        using var attempt = new ContainerStartAttempt(TimeSpan.FromMinutes(1), TimeSpan.FromMilliseconds(50), callerSource.Token);
+
+        attempt.BeginCreating();
+        await callerSource.CancelAsync();
+        attempt.EndCreating();
+        await Task.Delay(TimeSpan.FromMilliseconds(250), TestContext.Current.CancellationToken);
+
+        Assert.False(attempt.GivenUp.IsCompleted);
+        Assert.True(attempt.Token.IsCancellationRequested);
+    }
+
+    [Fact]
+    public void WaitsForTheCreateFor5SecondsAtMost()
+    {
+        Assert.Equal(TimeSpan.FromSeconds(5), ContainerStartAttempt.CreateGracePeriod);
+    }
+
+    [Fact]
     public async Task EndsAtOnceIfTheCallerCancelsWhileDockerCreatesNoContainer()
     {
         using var callerSource = new CancellationTokenSource();
@@ -71,6 +104,17 @@ public sealed class ContainerStartAttemptTests
         Assert.True(attempt.Token.IsCancellationRequested);
         Assert.Throws<OperationCanceledException>(attempt.BeginCreating);
         Assert.False(attempt.HasAskedToCreate);
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        using var guardSource = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        guardSource.CancelAfter(_guardTimeout);
+
+        while (!condition())
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(10), guardSource.Token);
+        }
     }
 
     private static async Task WaitUntilEndedAsync(ContainerStartAttempt attempt)

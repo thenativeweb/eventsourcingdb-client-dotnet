@@ -6,10 +6,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using Docker.DotNet;
 using Docker.DotNet.Models;
+using DotNet.Testcontainers;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Clients;
 using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
+using Microsoft.Extensions.Logging;
 
 namespace EventSourcingDb;
 
@@ -26,7 +28,9 @@ internal static class ContainerStart
 
     public const int MaxAttempts = 3;
 
-    private const string CanceledMessage = "The operation was canceled.";
+    // The key in the Data of the exception of a failed start under which a failure to remove the
+    // container goes along with it.
+    public const string RemovalExceptionKey = "RemovalException";
 
     private static readonly TimeSpan _pollInterval = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan _pingTimeout = TimeSpan.FromSeconds(1);
@@ -60,7 +64,8 @@ internal static class ContainerStart
         CancellationToken token)
     {
         var startId = Guid.NewGuid().ToString();
-        using var attempt = new ContainerStartAttempt(startupTimeout, token);
+        var attempt = new ContainerStartAttempt(startupTimeout, token);
+        var isGivenUp = false;
         IContainer? container = null;
 
         try
@@ -80,32 +85,43 @@ internal static class ContainerStart
                 .Build();
             container.Created += (_, _) => attempt.EndCreating();
 
-            await container.StartAsync(attempt.Token).ConfigureAwait(false);
+            var starting = container.StartAsync(attempt.Token);
+            await Task.WhenAny(starting, attempt.GivenUp).ConfigureAwait(false);
+
+            if (attempt.GivenUp.IsCompleted)
+            {
+                // Docker did not finish creating the container within the grace period, so the
+                // attempt waits no longer, and removes the container in the background.
+                isGivenUp = true;
+                _ = RemoveGivenUpAsync(starting, container, startId, attempt);
+
+                token.ThrowIfCancellationRequested();
+                return null;
+            }
+
+            await starting.ConfigureAwait(false);
             return container;
         }
-        catch (Exception exception)
+        catch (Exception exception) when (!isGivenUp)
         {
             // Testcontainers reports a container as created only once it has copied the files into
             // it and inspected it, so the attempt stops waiting for that once the start failed.
             attempt.EndCreating();
 
-            // A failure to remove the container never changes the message of the exception.
+            // A failure to remove the container never changes the exception, but goes along with
+            // it in its Data.
             var removalException = await RemoveAsync(container, startId, attempt.HasAskedToCreate).ConfigureAwait(false);
 
             if (token.IsCancellationRequested)
             {
-                throw new OperationCanceledException(CanceledMessage, removalException, token);
+                throw WithRemovalException(new OperationCanceledException(token), removalException);
             }
 
             // The container exited.
             if (exception is ContainerStartFailedException)
             {
-                if (removalException is null)
-                {
-                    throw;
-                }
-
-                throw new ContainerStartFailedException(exception.Message, removalException);
+                WithRemovalException(exception, removalException);
+                throw;
             }
 
             if (attempt.HasTimedOut && exception is OperationCanceledException or TimeoutException)
@@ -119,10 +135,62 @@ internal static class ContainerStart
                 throw new ContainerStartFailedException($"Failed to start the container: {removalException.Message}", removalException);
             }
 
-            throw new ContainerStartFailedException(
-                $"Failed to start the container: {exception.Message}",
-                removalException is null ? exception : new AggregateException(exception, removalException)
+            throw WithRemovalException(
+                new ContainerStartFailedException($"Failed to start the container: {exception.Message}", exception),
+                removalException
             );
+        }
+        finally
+        {
+            if (!isGivenUp)
+            {
+                attempt.Dispose();
+            }
+        }
+    }
+
+    private static Exception WithRemovalException(Exception exception, Exception? removalException)
+    {
+        if (removalException is not null)
+        {
+            exception.Data[RemovalExceptionKey] = removalException;
+        }
+
+        return exception;
+    }
+
+    // Removes the container of an attempt that stopped waiting for Docker to create it: once the
+    // call to create it returned, and a final time after the grace period, in case Docker creates
+    // the container only after the call was cut short. As nobody waits for this, it logs what
+    // fails.
+    private static async Task RemoveGivenUpAsync(Task starting, IContainer container, string startId, ContainerStartAttempt attempt)
+    {
+        try
+        {
+            var gracePeriod = Task.Delay(ContainerStartAttempt.CreateGracePeriod);
+
+            if (await Task.WhenAny(starting, gracePeriod).ConfigureAwait(false) == starting)
+            {
+                // The attempt ended the start, so it failed, which is no news.
+                _ = starting.Exception;
+
+                LogRemovalException(await RemoveAsync(container, startId, true).ConfigureAwait(false));
+                await gracePeriod.ConfigureAwait(false);
+            }
+
+            LogRemovalException(await RemoveAsync(null, startId, true).ConfigureAwait(false));
+        }
+        finally
+        {
+            attempt.Dispose();
+        }
+    }
+
+    private static void LogRemovalException(Exception? removalException)
+    {
+        if (removalException is not null)
+        {
+            ConsoleLogger.Instance.LogWarning(removalException, "Failed to remove the container of a start that Docker did not create in time.");
         }
     }
 

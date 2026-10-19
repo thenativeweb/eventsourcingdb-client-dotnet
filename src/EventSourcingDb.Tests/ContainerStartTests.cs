@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Net;
@@ -191,24 +192,75 @@ public sealed class ContainerStartTests : IAsyncDisposable
     }
 
     [Fact]
-    public async Task RemovesTheContainerIfTheCallerCancelsWhileDockerCreatesIt()
+    public async Task LetsDockerFinishCreatingTheContainerIfTheCallerCancelsMeanwhileAndRemovesIt()
     {
+        // Docker takes a second to create the container, which is less than the grace period.
+        await using var proxy = new DockerProxy(TimeSpan.FromSeconds(1), holdCount: 1);
         using var callerSource = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var builder = CreateBuilderForProxy(proxy);
 
-        // The pull policy runs right before Docker creates the container, so the caller cancels
-        // while Docker creates it.
-        var builder = CreateBuilder()
-            .WithImagePullPolicy(image =>
-            {
-                callerSource.CancelAfter(TimeSpan.FromMilliseconds(1));
-                return image is null;
-            });
+        var starting = ContainerStart.StartAsync(builder, 3000, TimeSpan.FromSeconds(20), callerSource.Token);
+        await proxy.WaitForCreatesAsync(1, TestContext.Current.CancellationToken);
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            ContainerStart.StartAsync(builder, 3000, TimeSpan.FromSeconds(20), callerSource.Token)
+        var stopwatch = Stopwatch.StartNew();
+        await callerSource.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => starting);
+
+        Assert.True(stopwatch.Elapsed < ContainerStartAttempt.CreateGracePeriod, $"The start took {stopwatch.Elapsed} to end.");
+
+        // Docker created the container, although the caller cancelled while it did, and the
+        // start removed it.
+        await _events.SettleAsync(1, TestContext.Current.CancellationToken);
+        Assert.Single(_events.CreatedStartIds);
+        Assert.Empty(await ListContainersAsync());
+    }
+
+    [Fact]
+    public async Task WaitsForTheGracePeriodAtMostIfTheCallerCancelsWhileDockerCreatesTheContainerAndRemovesTheLateContainer()
+    {
+        // Docker takes longer than the grace period to create the container, but finishes before
+        // the start looks for the container a final time.
+        await using var proxy = new DockerProxy(TimeSpan.FromSeconds(8), holdCount: 1);
+        using var callerSource = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var builder = CreateBuilderForProxy(proxy);
+
+        var starting = ContainerStart.StartAsync(builder, 3000, TimeSpan.FromSeconds(20), callerSource.Token);
+        await proxy.WaitForCreatesAsync(1, TestContext.Current.CancellationToken);
+
+        var stopwatch = Stopwatch.StartNew();
+        await callerSource.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => starting);
+
+        AssertGracePeriod(stopwatch.Elapsed);
+
+        await _events.SettleAsync(1, TestContext.Current.CancellationToken);
+        Assert.Single(_events.CreatedStartIds);
+        Assert.Empty(await ListContainersAsync());
+    }
+
+    [Fact]
+    public async Task WaitsForTheGracePeriodAtMostIfTheTimeRunsOutWhileDockerCreatesTheContainerAndRemovesTheLateContainer()
+    {
+        // Docker takes longer than the startup timeout and the grace period to create the first
+        // container, but finishes before the start looks for the container a final time. The
+        // database never becomes reachable.
+        await using var proxy = new DockerProxy(TimeSpan.FromSeconds(8), holdCount: 1);
+        var builder = CreateBuilderForProxy(proxy, httpPort: 3001);
+
+        var exception = await Assert.ThrowsAsync<ContainerStartFailedException>(() =>
+            ContainerStart.StartAsync(builder, 3000, TimeSpan.FromSeconds(0.5), TestContext.Current.CancellationToken)
         );
 
-        await _events.SettleAsync(0, TestContext.Current.CancellationToken);
+        Assert.Equal("Failed to start the container, the database did not become reachable within 0.5s in any of 3 containers", exception.Message);
+
+        // The second container replaces the first one once the startup timeout and the grace period
+        // ran out.
+        var createArrivals = proxy.CreateArrivals;
+        Assert.Equal(3, createArrivals.Count);
+        AssertGracePeriod(createArrivals[1] - createArrivals[0] - TimeSpan.FromSeconds(0.5));
+
+        await _events.SettleAsync(3, TestContext.Current.CancellationToken);
+        Assert.Equal(3, _events.CreatedStartIds.Distinct().Count());
         Assert.Empty(await ListContainersAsync());
     }
 
@@ -234,6 +286,25 @@ public sealed class ContainerStartTests : IAsyncDisposable
             .WithCommand(command)
             .WithLabel(TestLabel, _testId)
             .WithCleanUp(true);
+    }
+
+    // Talks to Docker through the proxy. Without Ryuk, Testcontainers does not create its container
+    // through the proxy, which would hold it, too.
+    private ContainerBuilder CreateBuilderForProxy(DockerProxy proxy, ushort httpPort = 3000)
+    {
+        return CreateBuilder(httpPort: httpPort)
+            .WithDockerEndpoint(proxy.Endpoint)
+            .WithCleanUp(false);
+    }
+
+    // The start waits for Docker to create the container for the grace period, and not longer.
+    private static void AssertGracePeriod(TimeSpan waited)
+    {
+        Assert.True(
+            waited >= ContainerStartAttempt.CreateGracePeriod - TimeSpan.FromSeconds(0.5)
+                && waited < ContainerStartAttempt.CreateGracePeriod + TimeSpan.FromSeconds(2),
+            $"The start waited {waited} for Docker to create the container."
+        );
     }
 
     private async Task<ContainerListResponse[]> ListContainersAsync()
