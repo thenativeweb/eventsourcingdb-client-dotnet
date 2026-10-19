@@ -105,7 +105,7 @@ catch (OutcomeUnknownException)
 A handler that retries requests could store a write twice: the first attempt is stored but its response is lost, and the second attempt is stored as well. So the client SDK sends the body of a write only once. If something in the HTTP pipeline tries to send it a second time, the client SDK stops that attempt before anything of it reaches the server, and the write fails with an `OutcomeUnknownException`, since the first attempt may have been stored. Because of that, two setups make every write fail with an `OutcomeUnknownException`:
 
 - A redirect with a status of `307` or `308` on the path of the write. Point the base URL directly at the final address, for example at `https://`.
-- A handler that reads the body before it passes the request on, for example with `CopyToAsync`.
+- A handler that copies the body with `CopyToAsync` before it passes the request on.
 
 A refusal only tells about the attempt that it answers. If a handler reads the body of a write into a buffer or as a stream, the client SDK cannot count the attempts any more, so every failure of the write is an `OutcomeUnknownException`, a refusal included. So a handler that only reads the body, such as one that logs it, turns even a single refusal into an `OutcomeUnknownException`. What the client SDK can neither see nor stop is a handler that sends the body again from such a buffer or from a copy of its own, for example a `ByteArrayContent`, which can store the write twice. If the server refuses such a copy, the write fails with a `DbApiException`, although the first attempt may have been stored.
 
