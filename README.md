@@ -8,7 +8,7 @@ For more information on EventSourcingDB, see its [official documentation](https:
 
 This client SDK includes support for [Testcontainers](https://testcontainers.com/) to spin up EventSourcingDB instances in integration tests. For details, see [Using Testcontainers](#using-testcontainers).
 
-If you are upgrading from version 1.x of this client SDK, see [Upgrading from 1.x](#upgrading-from-1x).
+If you are upgrading from version 1.x of this client SDK, see [Upgrading From Version 1](#upgrading-from-version-1).
 
 ## Getting Started
 
@@ -47,7 +47,7 @@ await client.VerifyApiTokenAsync();
 
 Optionally, you might provide a `CancellationToken`.
 
-### Choosing the API
+### Talking to Servers With and Without the v2 API
 
 The client SDK works with servers that offer the v2 API of EventSourcingDB, which EventSourcingDB offers since version 1.3, and with servers that only offer the v1 API. Creating a client does not make any request. Instead, the first request of a client finds out which API the server offers, by sending a `GET` request to `/api/v2/system/ping`, and the client remembers the answer for all of its following requests. If this fails, for example because the server is not reachable, the first request fails with that error, and the next request tries again.
 
@@ -731,9 +731,9 @@ In case you need to set up the client yourself, use the following methods to get
 - `GetBaseUrl()` returns the full URL of the container
 - `GetApiToken()` returns the API token
 
-## Upgrading from 1.x
+## Upgrading From Version 1
 
-Version 2.0 of this client SDK speaks the v2 API of EventSourcingDB as well as the v1 API, and [chooses](#choosing-the-api) between them on the first request of a client. On servers that offer the v2 API, reading requests use the HTTP method `QUERY`, which a proxy in front of EventSourcingDB has to let through. Besides that, the following changes break code written for version 1.x:
+Version 2.0 of this client SDK speaks the v2 API of EventSourcingDB as well as the v1 API, and [chooses](#talking-to-servers-with-and-without-the-v2-api) between them on the first request of a client. On servers that offer the v2 API, reading requests use the HTTP method `QUERY`, which a proxy in front of EventSourcingDB has to let through. Besides that, the following changes break code written for version 1.x:
 
 - **`ReadSubjectsAsync` takes a subject and required options.** The parameter `baseSubject` is now `subject`, and you have to decide whether to read recursively. Version 1.x always read recursively.
 
