@@ -14,10 +14,10 @@
 
   <ItemGroup>
     <PackageReference Include="System.Linq.Async" Version="7.0.1" Condition="$([MSBuild]::GetTargetFrameworkVersion('$(TargetFramework)')) &lt; 10.0" />
-    <PackageReference Include="xunit.v3" Version="4.0.1" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12"/>
-    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.12"/>
-    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.10.0"/>
+    <PackageReference Include="xunit.v3" Version="4.0.2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.13"/>
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.13"/>
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.11.0"/>
   </ItemGroup>
 
   <ItemGroup>
