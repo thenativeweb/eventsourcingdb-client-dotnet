@@ -442,7 +442,7 @@ internal sealed class V2Transport(ServerConnection connection, Action forgetV2) 
     // otherwise.
     private async Task ThrowIfNotOkAsync(HttpResponseMessage response, CancellationToken token)
     {
-        if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed)
+        if (V2Api.IsMissing(response.StatusCode))
         {
             forgetV2();
         }
