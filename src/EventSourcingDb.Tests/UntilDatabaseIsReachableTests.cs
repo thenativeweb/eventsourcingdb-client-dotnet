@@ -13,6 +13,12 @@ namespace EventSourcingDb.Tests;
 public sealed class UntilDatabaseIsReachableTests : IDisposable
 {
     private const ushort Port = 3000;
+    private const string V2PingPath = "/api/v2/system/ping";
+    private const string V1PingPath = "/api/v1/ping";
+
+    // Both pings go out without an API token, so a request that carries one does not match these.
+    private static readonly FakeRequest _v2Ping = new("GET", V2PingPath, null);
+    private static readonly FakeRequest _v1Ping = new("GET", V1PingPath, null);
 
     private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(1) };
 
@@ -38,23 +44,102 @@ public sealed class UntilDatabaseIsReachableTests : IDisposable
         Assert.False(await CreateWait().UntilAsync(container));
     }
 
-    [Fact]
-    public async Task CountsOnlyTheStatus200()
+    // The ping that answers 204 is either the v2 ping, or the v1 ping of a server that answers the
+    // v2 ping with 404, as one without the v2 API does.
+    [Theory]
+    [InlineData(V2PingPath)]
+    [InlineData(V1PingPath)]
+    public async Task CountsOnlyTheStatus200(string noContentPath)
     {
-        await using var noContentServer = new FakeServerListener(new FakeServer(_ => new HttpResponseMessage(HttpStatusCode.NoContent)));
+        var noContentServer = new FakeServer(request => new HttpResponseMessage(request.Path == noContentPath ? HttpStatusCode.NoContent : HttpStatusCode.NotFound));
+        await using var noContentListener = new FakeServerListener(noContentServer);
         await using var okServer = new FakeServerListener(new FakeServer(_ => new HttpResponseMessage(HttpStatusCode.OK)));
         var (container, fake) = FakeContainer.Create();
         var wait = CreateWait();
 
-        fake.MappedPorts = new Dictionary<ushort, ushort> { [Port] = (ushort)noContentServer.BaseUrl.Port };
+        fake.MappedPorts = new Dictionary<ushort, ushort> { [Port] = (ushort)noContentListener.BaseUrl.Port };
         Assert.False(await wait.UntilAsync(container));
+        Assert.Contains(noContentServer.Requests, request => request.Path == noContentPath);
 
         fake.MappedPorts = new Dictionary<ushort, ushort> { [Port] = (ushort)okServer.BaseUrl.Port };
         Assert.True(await wait.UntilAsync(container));
     }
 
+    [Theory]
+    [InlineData(HttpStatusCode.OK)]
+    [InlineData(HttpStatusCode.NotFound)]
+    public async Task CountsTheV2PingAnswering200WithoutAskingTheV1Ping(HttpStatusCode v1Status)
+    {
+        // A v1 ping that answers 404 stands in for a server without the v1 API.
+        var server = new FakeServer(request => new HttpResponseMessage(request.Path == V2PingPath ? HttpStatusCode.OK : v1Status));
+        await using var listener = new FakeServerListener(server);
+
+        Assert.True(await CreateWait().UntilAsync(CreateContainer(listener)));
+        Assert.Equal([_v2Ping], server.Requests);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.NotFound)]
+    [InlineData(HttpStatusCode.MethodNotAllowed)]
+    public async Task AsksTheV1PingWithinTheSamePollIfTheServerDoesNotOfferTheV2Api(HttpStatusCode v2Status)
+    {
+        var server = new FakeServer(request => new HttpResponseMessage(request.Path == V2PingPath ? v2Status : HttpStatusCode.OK));
+        await using var listener = new FakeServerListener(server);
+
+        Assert.True(await CreateWait().UntilAsync(CreateContainer(listener)));
+        Assert.Equal([_v2Ping, _v1Ping], server.Requests);
+    }
+
     [Fact]
-    public async Task ReadsTheMappedPortAnewForEveryPing()
+    public async Task DoesNotAskTheV1PingIfTheV2PingAnswersAnotherStatus()
+    {
+        // The v1 ping would count, so the attempt fails only if the wait does not ask it.
+        var server = new FakeServer(request => new HttpResponseMessage(request.Path == V2PingPath ? HttpStatusCode.ServiceUnavailable : HttpStatusCode.OK));
+        await using var listener = new FakeServerListener(server);
+
+        Assert.False(await CreateWait().UntilAsync(CreateContainer(listener)));
+        Assert.Equal([_v2Ping], server.Requests);
+    }
+
+    [Fact]
+    public async Task DoesNotAskTheV1PingIfTheV2PingTimesOut()
+    {
+        // The v2 ping never answers, so it runs into the timeout of the HttpClient, and the v1
+        // ping would count.
+        var server = new FakeServer(async (request, token) =>
+        {
+            if (request.Path == V2PingPath)
+            {
+                await Task.Delay(Timeout.Infinite, token);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+        await using var listener = new FakeServerListener(server);
+
+        Assert.False(await CreateWait().UntilAsync(CreateContainer(listener)));
+        Assert.Equal([_v2Ping], server.Requests);
+    }
+
+    [Fact]
+    public async Task StartsEveryPollWithTheV2Ping()
+    {
+        var v2Status = HttpStatusCode.NotFound;
+        var server = new FakeServer(request => new HttpResponseMessage(request.Path == V2PingPath ? v2Status : HttpStatusCode.ServiceUnavailable));
+        await using var listener = new FakeServerListener(server);
+        var container = CreateContainer(listener);
+        var wait = CreateWait();
+
+        Assert.False(await wait.UntilAsync(container));
+
+        v2Status = HttpStatusCode.OK;
+        Assert.True(await wait.UntilAsync(container));
+
+        Assert.Equal([_v2Ping, _v1Ping, _v2Ping], server.Requests);
+    }
+
+    [Fact]
+    public async Task ReadsTheMappedPortAnewForEveryPoll()
     {
         await using var unavailableServer = new FakeServerListener(new FakeServer(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)));
         await using var okServer = new FakeServerListener(new FakeServer(_ => new HttpResponseMessage(HttpStatusCode.OK)));
@@ -107,5 +192,13 @@ public sealed class UntilDatabaseIsReachableTests : IDisposable
     private UntilDatabaseIsReachable CreateWait()
     {
         return new UntilDatabaseIsReachable(Port, _httpClient, CancellationToken.None, CancellationToken.None);
+    }
+
+    private static IContainer CreateContainer(FakeServerListener listener)
+    {
+        var (container, fake) = FakeContainer.Create();
+        fake.MappedPorts = new Dictionary<ushort, ushort> { [Port] = (ushort)listener.BaseUrl.Port };
+
+        return container;
     }
 }

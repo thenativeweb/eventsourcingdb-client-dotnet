@@ -2,8 +2,6 @@ using System;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
-using System.Net;
-using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Docker.DotNet;
@@ -42,13 +40,12 @@ public sealed class ContainerStartTests : IAsyncDisposable
 
         try
         {
-            using var httpClient = new HttpClient();
-            using var response = await httpClient.GetAsync(
-                new Uri($"http://{container.Hostname}:{container.GetMappedPublicPort(3000)}/api/v1/ping"),
-                TestContext.Current.CancellationToken
-            );
+            // The ping of a client checks the database apart from the wait of the start, so this
+            // fails if the start ends before the database is reachable, whatever the wait counts.
+            // The client finds out on its own which API the server offers.
+            var client = new Client(new Uri($"http://{container.Hostname}:{container.GetMappedPublicPort(3000)}"), "secret");
+            await client.PingAsync(TestContext.Current.CancellationToken);
 
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             Assert.Single(await ListContainersAsync());
         }
         finally

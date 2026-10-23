@@ -239,12 +239,10 @@ public class Client : IClient
     }
 
     // Asks the server for the ping of the v2 API. A server that offers it answers with an event
-    // in an envelope of the v2 API. A server before EventSourcingDB 1.3 does not know the path,
-    // and answers with 404, or with 405 where its UI serves other methods. Such an answer means
-    // v1 even if it does not come from EventSourcingDB, as from a proxy that passes on only the
-    // paths of the v1 API, since every request to the v1 API checks that its answer does. Any
-    // other answer is no definitive one, so the probe fails with it. Like every ping, the probe
-    // needs no API token, so it sends none.
+    // in an envelope of the v2 API, and one that does not answers as V2Api describes. Such an
+    // answer means v1 even if it does not come from EventSourcingDB, since every request to the
+    // v1 API checks that its answer does. Any other answer is no definitive one, so the probe
+    // fails with it. Like every ping, the probe needs no API token, so it sends none.
     private async Task<ApiVersion> ProbeAsync()
     {
         var logger = _connection.Logger;
@@ -256,14 +254,15 @@ public class Client : IClient
             using var response = await _connection
                 .SendAsync(request, HttpCompletionOption.ResponseContentRead, CancellationToken.None, withApiToken: false)
                 .ConfigureAwait(false);
-            if (response.StatusCode is not (HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed))
+            var isV2Missing = V2Api.IsMissing(response.StatusCode);
+            if (!isV2Missing)
             {
                 response.ThrowIfNotValidServerHeader();
             }
 
             var apiVersion = response.StatusCode switch
             {
-                HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed => ApiVersion.V1,
+                _ when isV2Missing => ApiVersion.V1,
                 HttpStatusCode.OK => await ReadV2PingAsync(response).ConfigureAwait(false),
                 _ => throw await ServerConnection
                     .ReadStatusErrorAsync(response, (_, _) => null, CancellationToken.None)
