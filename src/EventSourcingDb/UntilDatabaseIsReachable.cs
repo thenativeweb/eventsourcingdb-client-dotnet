@@ -11,9 +11,12 @@ using DotNet.Testcontainers.Containers;
 namespace EventSourcingDb;
 
 // Waits until the database in a container answers a ping with the status 200, which is the only
-// status that counts. Testcontainers inspects the container anew before every poll, and the
-// mapped port is read anew for every ping, since Docker sometimes publishes it only a while after
-// it started the container. Once the container has exited, it fails with the end of its log.
+// status that counts. Every poll asks the ping of the v2 API first, and the ping of the v1 API
+// only if the server answers that with 404 or 405, as a server without the v2 API does, so that
+// the wait works against servers with either API or both. Testcontainers inspects the container
+// anew before every poll, and the mapped port is read anew for every poll, since Docker sometimes
+// publishes it only a while after it started the container. Once the container has exited, it
+// fails with the end of its log.
 internal sealed class UntilDatabaseIsReachable(
     ushort port,
     HttpClient httpClient,
@@ -22,6 +25,8 @@ internal sealed class UntilDatabaseIsReachable(
 ) : IWaitUntil
 {
     private const int LogTailLength = 20;
+    private const string V2PingPath = "/api/v2/system/ping";
+    private const string V1PingPath = "/api/v1/ping";
 
     public async Task<bool> UntilAsync(IContainer container)
     {
@@ -42,13 +47,23 @@ internal sealed class UntilDatabaseIsReachable(
             return false;
         }
 
+        var baseUrl = new Uri($"http://{container.Hostname}:{mappedPort}");
+
         try
         {
-            using var response = await httpClient
-                .GetAsync(new Uri($"http://{container.Hostname}:{mappedPort}/api/v1/ping"), attemptToken)
-                .ConfigureAwait(false);
+            var v2Status = await PingAsync(new Uri(baseUrl, V2PingPath)).ConfigureAwait(false);
 
-            return response.StatusCode == HttpStatusCode.OK;
+            // Only 404 and 405 say that the server lacks the v2 API. Any other answer fails the
+            // poll, since for a server that may offer the v2 API, the v1 ping would not tell
+            // whether the database is ready. No poll remembers what an earlier one found out,
+            // which keeps the wait free of state at the cost of a second request per poll against
+            // a server without the v2 API.
+            if (v2Status is HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed)
+            {
+                return await PingAsync(new Uri(baseUrl, V1PingPath)).ConfigureAwait(false) == HttpStatusCode.OK;
+            }
+
+            return v2Status == HttpStatusCode.OK;
         }
         catch (HttpRequestException)
         {
@@ -61,6 +76,14 @@ internal sealed class UntilDatabaseIsReachable(
             // The ping timed out.
             return false;
         }
+    }
+
+    // Like every ping, it needs no API token, so it sends none.
+    private async Task<HttpStatusCode> PingAsync(Uri url)
+    {
+        using var response = await httpClient.GetAsync(url, attemptToken).ConfigureAwait(false);
+
+        return response.StatusCode;
     }
 
     // Docker hands out what the container wrote to stdout and to stderr apart from each other, so
