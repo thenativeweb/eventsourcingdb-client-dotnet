@@ -571,8 +571,9 @@ public sealed class ApiVersionDetectionTests
         Assert.Equal(2, server.Requests.Count(request => request.Path == "/api/v1/write-events"));
     }
 
-    // Several writes with a recursive precondition, which are refused on the same remembered
-    // answer, find out again with one probe, and each of them is sent once.
+    // A write with a recursive precondition that arrives while another one finds out again which
+    // API the server offers joins the probe that runs, and each of them is sent once, through the
+    // v2 API.
     [Fact]
     public async Task SharesTheProbeThatFindsOutAgainBetweenWritesWithARecursivePrecondition()
     {
@@ -621,6 +622,123 @@ public sealed class ApiVersionDetectionTests
 
         Assert.Equal(2, Volatile.Read(ref probeCount));
         Assert.Equal(2, server.Requests.Count(request => request.Path == "/api/v2/data/write-events"));
+    }
+
+    // While a write with a recursive precondition finds out again, every other request keeps
+    // using the remembered answer, and only an answer of that probe replaces it.
+    [Fact]
+    public async Task KeepsUsingTheRememberedV1ApiForOtherRequestsWhileAWriteFindsOutAgain()
+    {
+        var probeArrived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var answerProbe = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var probeCount = 0;
+
+        var server = new FakeServer(async (request, token) =>
+        {
+            if (FakeServer.IsProbe(request))
+            {
+                if (Interlocked.Increment(ref probeCount) == 1)
+                {
+                    return FakeServer.AnswerProbe("v1");
+                }
+
+                probeArrived.TrySetResult();
+                await answerProbe.Task.WaitAsync(token);
+
+                return FakeServer.AnswerProbe("v2");
+            }
+
+            return request.Path switch
+            {
+                "/api/v1/ping" => FakeServer.Json(HttpStatusCode.OK, V1Ping),
+                "/api/v1/write-events" => FakeServer.Json(HttpStatusCode.OK, $"[{TestRequests.EventJson}]"),
+                "/api/v2/data/write-events" => FakeServer.Ndjson(TestRequests.Event("v2", "0"), TestRequests.End),
+                "/api/v2/system/verify-token" => FakeServer.Json(HttpStatusCode.OK, """{"type":"event","data":{"type":"io.eventsourcingdb.api.token-verified"}}"""),
+                _ => throw new InvalidOperationException("No request expected."),
+            };
+        });
+        var client = server.CreateClient();
+
+        await client.PingAsync(TestContext.Current.CancellationToken);
+
+        var recursiveWrite = client.WriteEventsAsync(
+            [new EventCandidate("https://www.eventsourcingdb.io", "/test", "io.eventsourcingdb.test", new { value = 23 })],
+            [Precondition.IsSubjectPristinePrecondition("/test", new PreconditionOptions(Recursive: true))],
+            TestContext.Current.CancellationToken
+        );
+        await probeArrived.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        var ordinaryWrite = client.WriteEventsAsync(
+            [new EventCandidate("https://www.eventsourcingdb.io", "/test", "io.eventsourcingdb.test", new { value = 23 })],
+            token: TestContext.Current.CancellationToken
+        );
+        var finished = await Task.WhenAny(ordinaryWrite, Task.Delay(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        Assert.True(finished == ordinaryWrite, "The write without a recursive precondition waited for the probe that finds out again.");
+        await ordinaryWrite;
+
+        answerProbe.SetResult();
+        await recursiveWrite;
+        await client.VerifyApiTokenAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, Volatile.Read(ref probeCount));
+        Assert.Equal(
+            ["/api/v1/ping", "/api/v1/write-events", "/api/v2/data/write-events", "/api/v2/system/verify-token"],
+            server.Requests.Where(request => !FakeServer.IsProbe(request)).Select(request => request.Path).ToArray()
+        );
+    }
+
+    [Fact]
+    public async Task KeepsUsingTheRememberedV1ApiIfAWriteFailsToFindOutAgain()
+    {
+        var probeArrived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var answerProbe = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var probeCount = 0;
+
+        var server = new FakeServer(async (request, token) =>
+        {
+            if (FakeServer.IsProbe(request))
+            {
+                if (Interlocked.Increment(ref probeCount) == 1)
+                {
+                    return FakeServer.AnswerProbe("v1");
+                }
+
+                probeArrived.TrySetResult();
+                await answerProbe.Task.WaitAsync(token);
+
+                return FakeServer.Text(HttpStatusCode.ServiceUnavailable, "the server is shutting down\n");
+            }
+
+            return request.Path switch
+            {
+                "/api/v1/ping" => FakeServer.Json(HttpStatusCode.OK, V1Ping),
+                _ => throw new InvalidOperationException("No request expected."),
+            };
+        });
+        var client = server.CreateClient();
+
+        await client.PingAsync(TestContext.Current.CancellationToken);
+
+        var recursiveWrite = client.WriteEventsAsync(
+            [new EventCandidate("https://www.eventsourcingdb.io", "/test", "io.eventsourcingdb.test", new { value = 23 })],
+            [Precondition.IsSubjectPristinePrecondition("/test", new PreconditionOptions(Recursive: true))],
+            TestContext.Current.CancellationToken
+        );
+        await probeArrived.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        answerProbe.SetResult();
+
+        // The write fails with the error of the probe, and is not sent.
+        var error = await Assert.ThrowsAsync<DbApiException>(() => recursiveWrite);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, error.Status);
+
+        await client.PingAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, Volatile.Read(ref probeCount));
+        Assert.Equal(
+            ["/api/v1/ping", "/api/v1/ping"],
+            server.Requests.Where(request => !FakeServer.IsProbe(request)).Select(request => request.Path).ToArray()
+        );
     }
 
     [Theory]

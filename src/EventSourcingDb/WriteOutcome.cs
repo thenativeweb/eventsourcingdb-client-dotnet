@@ -7,9 +7,10 @@ namespace EventSourcingDb;
 // EventSourcingDB never stops a write halfway, so a write whose answer is lost may have been
 // stored nonetheless. The rule is the same in every official SDK: a write is certainly not
 // stored only if the connection could not be established at all, so that nothing of the request
-// was sent, if the server explicitly refused it, or if the client refused it before sending it,
-// as for a recursive precondition on a server without the v2 API. Every other failure is
-// reported as an OutcomeUnknownException.
+// was sent, if the server explicitly refused it, if the client refused it before sending it, as
+// for a recursive precondition on a server without the v2 API, or if finding out which API the
+// server offers failed before it was sent. Every other failure is reported as an
+// OutcomeUnknownException.
 internal static class WriteOutcome
 {
     // The content must stay undisposed until the write has ended, since telling the outcome

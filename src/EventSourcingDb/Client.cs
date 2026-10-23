@@ -21,9 +21,11 @@ namespace EventSourcingDb;
 // instance, or of any client of the same registration for dependency injection, finds out which
 // API the server offers, and every request uses that API from then on. Only if the server
 // answers a request through the v2 API with 404 or 405, as after a rollback to a version without
-// it, does the next request find out again, and a write with a recursive precondition, which
-// needs the v2 API, finds out again for itself before it is refused for lack of it, as after an
-// upgrade to a version with it. This is the one place that chooses between the two.
+// it, does the next request find out again. A write with a recursive precondition, which needs
+// the v2 API, checks a remembered v1 again before it is refused for lack of it, as after an
+// upgrade to a version with it; every other request keeps using the remembered answer until that
+// check answers, and keeps it if the check fails. This is the one place that chooses between the
+// two.
 public class Client : IClient
 {
     private const string ProbeUrl = "/api/v2/system/ping";
@@ -126,9 +128,9 @@ public class Client : IClient
         // The preconditions are enumerated once, since telling whether the write needs the v2
         // API looks at them before the transport does.
         var preconditionList = (preconditions ?? []).ToArray();
-        var needsV2 = preconditionList.Any(precondition => precondition.IsRecursive);
+        var isV2Needed = preconditionList.Any(precondition => precondition.IsRecursive);
 
-        var transport = await GetTransportAsync(token, needsV2).ConfigureAwait(false);
+        var transport = await GetTransportAsync(token, isV2Needed).ConfigureAwait(false);
         return await transport.WriteEventsAsync(events, preconditionList, token).ConfigureAwait(false);
     }
 
@@ -212,18 +214,17 @@ public class Client : IClient
     // been upgraded meanwhile, and the transport of the v1 API refuses it. So it finds out again,
     // with the same probe as the first request, and is refused only if the server still does not
     // offer the v2 API. An answer that a probe found out after the request arrived is not checked
-    // again.
-    private async Task<IClient> GetTransportAsync(CancellationToken token, bool needsV2 = false)
+    // again. See ApiVersionDetector.DetectAgain for how this leaves every other request alone.
+    private async Task<IClient> GetTransportAsync(CancellationToken token, bool isV2Needed = false)
     {
         var detection = _apiVersionDetector.Detect(ProbeAsync, out var isRemembered);
 
         // A caller who cancels only stops waiting for the probe, which goes on for the others.
         var apiVersion = await detection.WaitAsync(token).ConfigureAwait(false);
 
-        if (needsV2 && isRemembered && apiVersion is ApiVersion.V1)
+        if (isV2Needed && isRemembered && apiVersion is ApiVersion.V1)
         {
-            _apiVersionDetector.ForgetV1(detection);
-            detection = _apiVersionDetector.Detect(ProbeAsync);
+            detection = _apiVersionDetector.DetectAgain(detection, ProbeAsync);
             apiVersion = await detection.WaitAsync(token).ConfigureAwait(false);
         }
 
