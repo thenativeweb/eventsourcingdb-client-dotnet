@@ -44,16 +44,22 @@ public sealed class UntilDatabaseIsReachableTests : IDisposable
         Assert.False(await CreateWait().UntilAsync(container));
     }
 
-    [Fact]
-    public async Task CountsOnlyTheStatus200()
+    // The ping that answers 204 is either the v2 ping, or the v1 ping of a server that answers the
+    // v2 ping with 404, as one without the v2 API does.
+    [Theory]
+    [InlineData(V2PingPath)]
+    [InlineData(V1PingPath)]
+    public async Task CountsOnlyTheStatus200(string noContentPath)
     {
-        await using var noContentServer = new FakeServerListener(new FakeServer(_ => new HttpResponseMessage(HttpStatusCode.NoContent)));
+        var noContentServer = new FakeServer(request => new HttpResponseMessage(request.Path == noContentPath ? HttpStatusCode.NoContent : HttpStatusCode.NotFound));
+        await using var noContentListener = new FakeServerListener(noContentServer);
         await using var okServer = new FakeServerListener(new FakeServer(_ => new HttpResponseMessage(HttpStatusCode.OK)));
         var (container, fake) = FakeContainer.Create();
         var wait = CreateWait();
 
-        fake.MappedPorts = new Dictionary<ushort, ushort> { [Port] = (ushort)noContentServer.BaseUrl.Port };
+        fake.MappedPorts = new Dictionary<ushort, ushort> { [Port] = (ushort)noContentListener.BaseUrl.Port };
         Assert.False(await wait.UntilAsync(container));
+        Assert.Contains(noContentServer.Requests, request => request.Path == noContentPath);
 
         fake.MappedPorts = new Dictionary<ushort, ushort> { [Port] = (ushort)okServer.BaseUrl.Port };
         Assert.True(await wait.UntilAsync(container));
