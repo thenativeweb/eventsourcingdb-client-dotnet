@@ -42,13 +42,22 @@ public sealed class ContainerStartTests : IAsyncDisposable
 
         try
         {
-            using var httpClient = new HttpClient();
-            using var response = await httpClient.GetAsync(
-                new Uri($"http://{container.Hostname}:{container.GetMappedPublicPort(3000)}/api/v1/ping"),
-                TestContext.Current.CancellationToken
-            );
+            using var httpClient = new HttpClient
+            {
+                BaseAddress = new Uri($"http://{container.Hostname}:{container.GetMappedPublicPort(3000)}"),
+            };
+            using var v2Response = await httpClient.GetAsync("/api/v2/system/ping", TestContext.Current.CancellationToken);
+            var status = v2Response.StatusCode;
 
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            // A server without the v2 API answers its ping with 404 or 405, so only the ping of
+            // the v1 API tells whether the database is reachable there.
+            if (status is HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed)
+            {
+                using var v1Response = await httpClient.GetAsync("/api/v1/ping", TestContext.Current.CancellationToken);
+                status = v1Response.StatusCode;
+            }
+
+            Assert.Equal(HttpStatusCode.OK, status);
             Assert.Single(await ListContainersAsync());
         }
         finally
