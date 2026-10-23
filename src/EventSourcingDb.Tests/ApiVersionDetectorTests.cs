@@ -123,4 +123,110 @@ public sealed class ApiVersionDetectorTests
 
         Assert.Same(detection, detector.Detect(() => throw new InvalidOperationException("A second probe.")));
     }
+
+    [Fact]
+    public async Task KeepsARememberedV1WhileItFindsOutAgain()
+    {
+        var secondProbe = new TaskCompletionSource<ApiVersion>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var probeCount = 0;
+
+        var detector = new ApiVersionDetector();
+        Task<ApiVersion> Probe()
+        {
+            return Interlocked.Increment(ref probeCount) == 1 ? Task.FromResult(ApiVersion.V1) : secondProbe.Task;
+        }
+
+        var first = detector.Detect(Probe);
+        Assert.Equal(ApiVersion.V1, await first.WaitAsync(TestContext.Current.CancellationToken));
+
+        var second = detector.DetectAgain(first, Probe);
+        Assert.NotSame(first, second);
+
+        // Every other request keeps the remembered answer, and the requests that find out again
+        // share the probe that runs.
+        Assert.Same(first, detector.Detect(Probe, out var isRemembered));
+        Assert.True(isRemembered);
+        Assert.Same(second, detector.DetectAgain(first, Probe));
+
+        // Once the probe answers, its answer is remembered.
+        secondProbe.SetResult(ApiVersion.V2);
+        Assert.Equal(ApiVersion.V2, await second.WaitAsync(TestContext.Current.CancellationToken));
+
+        Assert.Same(second, detector.Detect(Probe));
+        Assert.Equal(2, Volatile.Read(ref probeCount));
+    }
+
+    [Fact]
+    public async Task KeepsARememberedV1IfFindingOutAgainFails()
+    {
+        var probeCount = 0;
+
+        var detector = new ApiVersionDetector();
+        Task<ApiVersion> Probe()
+        {
+            return Interlocked.Increment(ref probeCount) == 1
+                ? Task.FromResult(ApiVersion.V1)
+                : Task.FromException<ApiVersion>(new InvalidOperationException("The probe failed."));
+        }
+
+        var first = detector.Detect(Probe);
+        Assert.Equal(ApiVersion.V1, await first.WaitAsync(TestContext.Current.CancellationToken));
+
+        var second = detector.DetectAgain(first, Probe);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => second.WaitAsync(TestContext.Current.CancellationToken));
+
+        Assert.Same(first, detector.Detect(Probe));
+
+        // The next request that finds out again starts a probe of its own.
+        var third = detector.DetectAgain(first, Probe);
+        Assert.NotSame(second, third);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => third.WaitAsync(TestContext.Current.CancellationToken));
+        Assert.Equal(3, Volatile.Read(ref probeCount));
+    }
+
+    // A request that finds out again after another one already did uses that answer, which was
+    // found out after the request arrived.
+    [Fact]
+    public async Task UsesTheAnswerThatWasFoundOutAgainMeanwhile()
+    {
+        var probeCount = 0;
+
+        var detector = new ApiVersionDetector();
+        Task<ApiVersion> Probe()
+        {
+            Interlocked.Increment(ref probeCount);
+            return Task.FromResult(ApiVersion.V1);
+        }
+
+        var first = detector.Detect(Probe);
+        Assert.Equal(ApiVersion.V1, await first.WaitAsync(TestContext.Current.CancellationToken));
+
+        var second = detector.DetectAgain(first, Probe);
+        Assert.Equal(ApiVersion.V1, await second.WaitAsync(TestContext.Current.CancellationToken));
+
+        Assert.Same(second, detector.DetectAgain(first, Probe));
+        Assert.Equal(2, Volatile.Read(ref probeCount));
+    }
+
+    // Only an answer that was there before is remembered. The answer of a probe that the call
+    // starts, or of one that runs, is found out for the call.
+    [Fact]
+    public async Task TellsWhetherTheAnswerWasRememberedBeforeTheCall()
+    {
+        var probe = new TaskCompletionSource<ApiVersion>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var detector = new ApiVersionDetector();
+
+        var detection = detector.Detect(() => probe.Task, out var isRememberedWhenStarted);
+        Assert.False(isRememberedWhenStarted);
+
+        Assert.Same(detection, detector.Detect(() => probe.Task, out var isRememberedWhileRunning));
+        Assert.False(isRememberedWhileRunning);
+
+        probe.SetResult(ApiVersion.V1);
+        await detection.WaitAsync(TestContext.Current.CancellationToken);
+
+        Assert.Same(detection, detector.Detect(() => probe.Task, out var isRememberedOnceAnswered));
+        Assert.True(isRememberedOnceAnswered);
+    }
 }

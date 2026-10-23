@@ -1,7 +1,5 @@
-using System;
 using System.Collections.Concurrent;
 using System.Linq;
-using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Threading;
@@ -11,18 +9,16 @@ using Xunit;
 
 namespace EventSourcingDb.Tests;
 
-// Proves that the client talks to the container through the API that the container offers. The
-// test finds that out on its own, rather than from the tag of the image, since the tag tells
-// nothing about the API once a release that offers v2 is the latest one.
+// Proves that the client talks to the container through the API that the container offers.
 public sealed class ApiChoiceTests : EventSourcingDbTests
 {
     [Fact]
     public async Task UsesTheApiThatTheServerOffers()
     {
-        var offersV2 = await OffersTheV2ApiAsync(Container!.GetBaseUrl());
+        var offersV2 = await OffersTheV2ApiAsync();
 
         var recorder = new RecordingHandler();
-        using var httpClient = new HttpClient(recorder) { BaseAddress = Container.GetBaseUrl() };
+        using var httpClient = new HttpClient(recorder) { BaseAddress = Container!.GetBaseUrl() };
         httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", Container.GetApiToken());
         var client = Container.GetClient(httpClient);
 
@@ -49,15 +45,6 @@ public sealed class ApiChoiceTests : EventSourcingDbTests
             ];
 
         Assert.Equal(expectedRequests, recorder.Requests.ToArray());
-    }
-
-    // A server offers the v2 API if it answers its ping with 200.
-    private static async Task<bool> OffersTheV2ApiAsync(Uri baseUrl)
-    {
-        using var httpClient = new HttpClient { BaseAddress = baseUrl };
-        using var response = await httpClient.GetAsync("/api/v2/system/ping", TestContext.Current.CancellationToken);
-
-        return response.StatusCode is HttpStatusCode.OK;
     }
 
     private sealed class RecordingHandler() : DelegatingHandler(new SocketsHttpHandler())

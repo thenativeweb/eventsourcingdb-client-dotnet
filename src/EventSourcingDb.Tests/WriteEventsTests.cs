@@ -211,6 +211,183 @@ public class WriteEventsTests : EventSourcingDbTests
     }
 
     [Fact]
+    public async Task SupportsTheIsSubjectPristinePreconditionWithOptionsThatAreNotRecursive()
+    {
+        var client = Container!.GetClient();
+        var options = new PreconditionOptions(Recursive: false);
+
+        await client.WriteEventsAsync([CreateEvent("/test/1")], token: TestContext.Current.CancellationToken);
+
+        // Only the subject itself counts, so an event below it does not violate the precondition.
+        var writtenEvents = await client.WriteEventsAsync(
+            [CreateEvent("/test")],
+            [Precondition.IsSubjectPristinePrecondition("/test", options)],
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.Single(writtenEvents);
+
+        var error = await Assert.ThrowsAsync<DbApiException>(() => client.WriteEventsAsync(
+            [CreateEvent("/test/1")],
+            [Precondition.IsSubjectPristinePrecondition("/test/1", options)],
+            TestContext.Current.CancellationToken
+        ));
+
+        Assert.Equal(ErrorCodes.PreconditionViolated, error.Code);
+    }
+
+    [Fact]
+    public async Task SupportsTheIsSubjectPristinePreconditionRecursively()
+    {
+        var client = Container!.GetClient();
+        var options = new PreconditionOptions(Recursive: true);
+
+        await client.WriteEventsAsync([CreateEvent("/test/1")], token: TestContext.Current.CancellationToken);
+
+        if (!await OffersTheV2ApiAsync())
+        {
+            await AssertFailsWithoutTheV2ApiAsync(client, Precondition.IsSubjectPristinePrecondition("/test", options));
+            return;
+        }
+
+        var error = await Assert.ThrowsAsync<DbApiException>(() => client.WriteEventsAsync(
+            [CreateEvent("/test")],
+            [Precondition.IsSubjectPristinePrecondition("/test", options)],
+            TestContext.Current.CancellationToken
+        ));
+
+        Assert.Equal(ErrorCodes.PreconditionViolated, error.Code);
+
+        // Only the subject and the subjects below it count, so an event of a sibling does not
+        // violate the precondition.
+        var writtenEvents = await client.WriteEventsAsync(
+            [CreateEvent("/test/2")],
+            [Precondition.IsSubjectPristinePrecondition("/test/2", options)],
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.Single(writtenEvents);
+    }
+
+    [Fact]
+    public async Task SupportsTheIsSubjectPopulatedPreconditionWithOptionsThatAreNotRecursive()
+    {
+        var client = Container!.GetClient();
+        var options = new PreconditionOptions(Recursive: false);
+
+        await client.WriteEventsAsync([CreateEvent("/test/1")], token: TestContext.Current.CancellationToken);
+
+        // Only the subject itself counts, so an event below it does not fulfill the precondition.
+        var error = await Assert.ThrowsAsync<DbApiException>(() => client.WriteEventsAsync(
+            [CreateEvent("/test")],
+            [Precondition.IsSubjectPopulatedPrecondition("/test", options)],
+            TestContext.Current.CancellationToken
+        ));
+
+        Assert.Equal(ErrorCodes.PreconditionViolated, error.Code);
+
+        var writtenEvents = await client.WriteEventsAsync(
+            [CreateEvent("/test/1")],
+            [Precondition.IsSubjectPopulatedPrecondition("/test/1", options)],
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.Single(writtenEvents);
+    }
+
+    [Fact]
+    public async Task SupportsTheIsSubjectPopulatedPreconditionRecursively()
+    {
+        var client = Container!.GetClient();
+        var options = new PreconditionOptions(Recursive: true);
+
+        await client.WriteEventsAsync([CreateEvent("/test/1")], token: TestContext.Current.CancellationToken);
+
+        if (!await OffersTheV2ApiAsync())
+        {
+            await AssertFailsWithoutTheV2ApiAsync(client, Precondition.IsSubjectPopulatedPrecondition("/test", options));
+            return;
+        }
+
+        var writtenEvents = await client.WriteEventsAsync(
+            [CreateEvent("/test")],
+            [Precondition.IsSubjectPopulatedPrecondition("/test", options)],
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.Single(writtenEvents);
+
+        // Only the subject and the subjects below it count, so an event of a sibling does not
+        // fulfill the precondition.
+        var error = await Assert.ThrowsAsync<DbApiException>(() => client.WriteEventsAsync(
+            [CreateEvent("/test/2")],
+            [Precondition.IsSubjectPopulatedPrecondition("/test/2", options)],
+            TestContext.Current.CancellationToken
+        ));
+
+        Assert.Equal(ErrorCodes.PreconditionViolated, error.Code);
+    }
+
+    [Fact]
+    public async Task SupportsTheIsSubjectOnEventIdPreconditionWithOptionsThatAreNotRecursive()
+    {
+        var client = Container!.GetClient();
+        var options = new PreconditionOptions(Recursive: false);
+
+        await client.WriteEventsAsync([CreateEvent("/test"), CreateEvent("/test/1")], token: TestContext.Current.CancellationToken);
+
+        // Only the subject itself counts, so its latest event is the one with the ID 0.
+        var error = await Assert.ThrowsAsync<DbApiException>(() => client.WriteEventsAsync(
+            [CreateEvent("/test")],
+            [Precondition.IsSubjectOnEventIdPrecondition("/test", "1", options)],
+            TestContext.Current.CancellationToken
+        ));
+
+        Assert.Equal(ErrorCodes.PreconditionViolated, error.Code);
+
+        var writtenEvents = await client.WriteEventsAsync(
+            [CreateEvent("/test")],
+            [Precondition.IsSubjectOnEventIdPrecondition("/test", "0", options)],
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.Single(writtenEvents);
+    }
+
+    [Fact]
+    public async Task SupportsTheIsSubjectOnEventIdPreconditionRecursively()
+    {
+        var client = Container!.GetClient();
+        var options = new PreconditionOptions(Recursive: true);
+
+        await client.WriteEventsAsync([CreateEvent("/test"), CreateEvent("/test/1")], token: TestContext.Current.CancellationToken);
+
+        if (!await OffersTheV2ApiAsync())
+        {
+            await AssertFailsWithoutTheV2ApiAsync(client, Precondition.IsSubjectOnEventIdPrecondition("/test", "1", options));
+            return;
+        }
+
+        // The subjects below the subject count as well, so the latest event is the one with the ID
+        // 1, which belongs to a subject below it.
+        var error = await Assert.ThrowsAsync<DbApiException>(() => client.WriteEventsAsync(
+            [CreateEvent("/test")],
+            [Precondition.IsSubjectOnEventIdPrecondition("/test", "0", options)],
+            TestContext.Current.CancellationToken
+        ));
+
+        Assert.Equal(ErrorCodes.PreconditionViolated, error.Code);
+
+        var writtenEvents = await client.WriteEventsAsync(
+            [CreateEvent("/test")],
+            [Precondition.IsSubjectOnEventIdPrecondition("/test", "1", options)],
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.Single(writtenEvents);
+    }
+
+    [Fact]
     public async Task SupportsTheIsEventQlQueryTruePrecondition()
     {
         var client = Container!.GetClient();
@@ -283,6 +460,41 @@ public class WriteEventsTests : EventSourcingDbTests
         var ex = await Assert.ThrowsAsync<DbApiException>(writeEvents);
 
         Assert.Contains("subject", ex.Message);
+    }
+
+    // A server without the v2 API cannot check a recursive precondition, so a write with one fails
+    // before anything of it is sent, and stores nothing.
+    private static async Task AssertFailsWithoutTheV2ApiAsync(IClient client, Precondition recursivePrecondition)
+    {
+        var eventsBefore = await ReadAllEventsAsync(client);
+
+        var error = await Assert.ThrowsAsync<IncompatibleServerException>(() => client.WriteEventsAsync(
+            [CreateEvent("/test")],
+            [recursivePrecondition],
+            TestContext.Current.CancellationToken
+        ));
+
+        Assert.Equal("The server does not offer the v2 API, which a recursive precondition needs.", error.Message);
+        Assert.Equal(eventsBefore, await ReadAllEventsAsync(client));
+    }
+
+    private static async Task<string[]> ReadAllEventsAsync(IClient client)
+    {
+        var events = await client
+            .ReadEventsAsync("/", new ReadEventsOptions(Recursive: true), TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+        return events.Select(@event => $"{@event.Id} {@event.Subject}").ToArray();
+    }
+
+    private static EventCandidate CreateEvent(string subject)
+    {
+        return new EventCandidate(
+            Source: "https://www.eventsourcingdb.io",
+            Subject: subject,
+            Type: "io.eventsourcingdb.test",
+            Data: new EventData(42)
+        );
     }
 
     private record struct EventData(int Value);
