@@ -435,11 +435,10 @@ internal sealed class V2Transport(ServerConnection connection, Action forgetV2) 
     // The v2 API answers every request that it accepts with 200 and reports what goes wrong
     // within its answer. Any other status refuses the request, with a text as the description.
     //
-    // A server that answers a path of the v2 API with 404 or 405 no longer offers it, for example
-    // because it was rolled back to a version without it, so the client forgets the API, and the
-    // next request finds out again which API the server offers. Like the probe, this holds for an
-    // answer that does not come from EventSourcingDB, too. The request itself fails as it would
-    // otherwise.
+    // A server that answers a path of the v2 API as V2Api describes no longer offers it, for
+    // example because it was rolled back to a version without it, so the client forgets the API,
+    // and the next request finds out again which API the server offers. The request itself fails
+    // as it would otherwise.
     private async Task ThrowIfNotOkAsync(HttpResponseMessage response, CancellationToken token)
     {
         if (V2Api.IsMissing(response.StatusCode))
