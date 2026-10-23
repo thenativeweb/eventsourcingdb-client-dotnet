@@ -123,4 +123,72 @@ public sealed class ApiVersionDetectorTests
 
         Assert.Same(detection, detector.Detect(() => throw new InvalidOperationException("A second probe.")));
     }
+
+    [Fact]
+    public async Task ForgetsARememberedV1OnlyWhileItIsTheRememberedAnswer()
+    {
+        var probeCount = 0;
+        var secondProbe = new TaskCompletionSource<ApiVersion>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var detector = new ApiVersionDetector();
+        Task<ApiVersion> Probe()
+        {
+            return Interlocked.Increment(ref probeCount) == 1 ? Task.FromResult(ApiVersion.V1) : secondProbe.Task;
+        }
+
+        var first = detector.Detect(Probe);
+        Assert.Equal(ApiVersion.V1, await first.WaitAsync(TestContext.Current.CancellationToken));
+
+        detector.ForgetV1(first);
+        var second = detector.Detect(Probe);
+        Assert.NotSame(first, second);
+
+        // Other requests that were refused on the first answer leave the probe that runs alone,
+        // even if it is handed over itself.
+        detector.ForgetV1(first);
+        detector.ForgetV1(second);
+        Assert.Same(second, detector.Detect(Probe));
+
+        // They also leave the answer of the newer probe alone once it is there.
+        secondProbe.SetResult(ApiVersion.V1);
+        Assert.Equal(ApiVersion.V1, await second.WaitAsync(TestContext.Current.CancellationToken));
+        detector.ForgetV1(first);
+
+        Assert.Same(second, detector.Detect(Probe));
+        Assert.Equal(2, Volatile.Read(ref probeCount));
+    }
+
+    [Fact]
+    public async Task DoesNotForgetARememberedV2AsV1()
+    {
+        var detector = new ApiVersionDetector();
+
+        var detection = detector.Detect(() => Task.FromResult(ApiVersion.V2));
+        Assert.Equal(ApiVersion.V2, await detection.WaitAsync(TestContext.Current.CancellationToken));
+        detector.ForgetV1(detection);
+
+        Assert.Same(detection, detector.Detect(() => throw new InvalidOperationException("A second probe.")));
+    }
+
+    // Only an answer that was there before is remembered. The answer of a probe that the call
+    // starts, or of one that runs, is found out for the call.
+    [Fact]
+    public async Task TellsWhetherTheAnswerWasRememberedBeforeTheCall()
+    {
+        var probe = new TaskCompletionSource<ApiVersion>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var detector = new ApiVersionDetector();
+
+        var detection = detector.Detect(() => probe.Task, out var isRememberedWhenStarted);
+        Assert.False(isRememberedWhenStarted);
+
+        Assert.Same(detection, detector.Detect(() => probe.Task, out var isRememberedWhileRunning));
+        Assert.False(isRememberedWhileRunning);
+
+        probe.SetResult(ApiVersion.V1);
+        await detection.WaitAsync(TestContext.Current.CancellationToken);
+
+        Assert.Same(detection, detector.Detect(() => probe.Task, out var isRememberedOnceAnswered));
+        Assert.True(isRememberedOnceAnswered);
+    }
 }

@@ -7,8 +7,9 @@ namespace EventSourcingDb;
 // Finds out once which API the server offers. Only a definitive answer is remembered: if the
 // probe fails, the requests that wait for it fail with its error, and the next request probes
 // again. Requests that arrive while the probe runs wait for the same probe. A remembered v2 is
-// forgotten once the server no longer offers it, see ForgetV2. A client has one of its own,
-// unless the clients of a registration for dependency injection share one.
+// forgotten once the server no longer offers it, see ForgetV2, and a remembered v1 before a
+// request is refused for lack of the v2 API, see ForgetV1. A client has one of its own, unless
+// the clients of a registration for dependency injection share one.
 internal sealed class ApiVersionDetector
 {
     private readonly object _lock = new();
@@ -31,8 +32,18 @@ internal sealed class ApiVersionDetector
     // outdated.
     public Task<ApiVersion> Detect(Func<Task<ApiVersion>> probe)
     {
+        return Detect(probe, out _);
+    }
+
+    // Like Detect, and tells whether the answer was remembered before the call. The answer of a
+    // probe that runs, or that the call starts, is found out after the request arrived, so it is
+    // not remembered in that sense.
+    public Task<ApiVersion> Detect(Func<Task<ApiVersion>> probe, out bool isRemembered)
+    {
         lock (_lock)
         {
+            isRemembered = _detection is { IsCompleted: true };
+
             return _detection ??= StartProbe(probe);
         }
     }
@@ -45,9 +56,24 @@ internal sealed class ApiVersionDetector
     // that wait for it, and the answer of a newer probe is kept.
     public void ForgetV2(Task<ApiVersion> detection)
     {
+        Forget(detection, ApiVersion.V2);
+    }
+
+    // Forgets that the server does not offer the v2 API, as the given probe found out, so that the
+    // next request probes again. A request that needs the v2 API calls this before it is refused
+    // for lack of it, since the server may have been upgraded meanwhile. As with ForgetV2, only
+    // that answer is forgotten, and only while it is still the remembered one, so that the
+    // requests that are refused on the same answer find out again with one probe.
+    public void ForgetV1(Task<ApiVersion> detection)
+    {
+        Forget(detection, ApiVersion.V1);
+    }
+
+    private void Forget(Task<ApiVersion> detection, ApiVersion apiVersion)
+    {
         lock (_lock)
         {
-            if (ReferenceEquals(_detection, detection) && detection is { IsCompletedSuccessfully: true, Result: ApiVersion.V2 })
+            if (ReferenceEquals(_detection, detection) && detection.IsCompletedSuccessfully && detection.Result == apiVersion)
             {
                 _detection = null;
             }

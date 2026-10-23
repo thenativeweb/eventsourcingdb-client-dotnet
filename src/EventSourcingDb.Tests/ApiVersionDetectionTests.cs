@@ -6,6 +6,7 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using EventSourcingDb.DependencyInjection;
+using EventSourcingDb.Types;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -444,6 +445,182 @@ public sealed class ApiVersionDetectionTests
         Assert.Equal(5, server.Requests.Count);
         Assert.Equal(new FakeRequest("GET", FakeServer.ProbePath, null), server.Requests[3]);
         Assert.Equal(new FakeRequest("GET", "/api/v1/ping", null), server.Requests[4]);
+    }
+
+    // A server that is upgraded to a version with the v2 API while the application runs, such as
+    // from EventSourcingDB 1.2 to 1.3, offers it from then on, while the client still remembers
+    // that it does not.
+    [Fact]
+    public async Task SendsAWriteWithARecursivePreconditionThroughTheV2ApiIfTheServerOffersItByNow()
+    {
+        var isUpgraded = false;
+        var server = new FakeServer(request =>
+        {
+            if (!isUpgraded)
+            {
+                return FakeServer.IsProbe(request)
+                    ? FakeServer.AnswerProbe("v1")
+                    : FakeServer.Json(HttpStatusCode.OK, V1Ping);
+            }
+
+            return request.Path switch
+            {
+                FakeServer.ProbePath => FakeServer.AnswerProbe("v2"),
+                "/api/v2/data/write-events" => FakeServer.Ndjson(TestRequests.Event("v2", "0"), TestRequests.End),
+                "/api/v2/system/verify-token" => FakeServer.Json(HttpStatusCode.OK, """{"type":"event","data":{"type":"io.eventsourcingdb.api.token-verified"}}"""),
+                _ => throw new InvalidOperationException("No request expected."),
+            };
+        });
+        var client = server.CreateClient();
+
+        await client.PingAsync(TestContext.Current.CancellationToken);
+        isUpgraded = true;
+
+        var writtenEvents = await client.WriteEventsAsync(
+            [new EventCandidate("https://www.eventsourcingdb.io", "/test", "io.eventsourcingdb.test", new { value = 23 })],
+            [Precondition.IsSubjectPristinePrecondition("/test", new PreconditionOptions(Recursive: true))],
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.Single(writtenEvents);
+
+        await client.VerifyApiTokenAsync(TestContext.Current.CancellationToken);
+
+        Assert.Collection(server.Requests,
+            request => Assert.Equal(new FakeRequest("GET", FakeServer.ProbePath, null), request),
+            request => Assert.Equal(new FakeRequest("GET", "/api/v1/ping", null), request),
+            request => Assert.Equal(new FakeRequest("GET", FakeServer.ProbePath, null), request),
+            request => Assert.Equal(
+                new FakeRequest(
+                    "POST",
+                    "/api/v2/data/write-events",
+                    """{"events":[{"source":"https://www.eventsourcingdb.io","subject":"/test","type":"io.eventsourcingdb.test","data":{"value":23}}],"preconditions":[{"type":"isSubjectPristine","payload":{"subject":"/test","options":{"recursive":true}}}]}"""
+                ),
+                request
+            ),
+            request => Assert.Equal(new FakeRequest("POST", "/api/v2/system/verify-token", null), request)
+        );
+    }
+
+    [Fact]
+    public async Task FindsOutAgainWhichApiTheServerOffersBeforeItRefusesAWriteWithARecursivePrecondition()
+    {
+        var server = new FakeServer(request => FakeServer.IsProbe(request)
+            ? FakeServer.AnswerProbe("v1")
+            : FakeServer.Json(HttpStatusCode.OK, V1Ping));
+        var client = server.CreateClient();
+
+        await client.PingAsync(TestContext.Current.CancellationToken);
+
+        await Assert.ThrowsAsync<IncompatibleServerException>(() => client.WriteEventsAsync(
+            [new EventCandidate("https://www.eventsourcingdb.io", "/test", "io.eventsourcingdb.test", new { value = 23 })],
+            [Precondition.IsSubjectPristinePrecondition("/test", new PreconditionOptions(Recursive: true))],
+            TestContext.Current.CancellationToken
+        ));
+
+        // The client remembers the answer that it found out again.
+        await client.PingAsync(TestContext.Current.CancellationToken);
+
+        Assert.Collection(server.Requests,
+            request => Assert.Equal(new FakeRequest("GET", FakeServer.ProbePath, null), request),
+            request => Assert.Equal(new FakeRequest("GET", "/api/v1/ping", null), request),
+            request => Assert.Equal(new FakeRequest("GET", FakeServer.ProbePath, null), request),
+            request => Assert.Equal(new FakeRequest("GET", "/api/v1/ping", null), request)
+        );
+    }
+
+    // The probe that the write starts has just found out which API the server offers.
+    [Fact]
+    public async Task ProbesOnlyOnceForAWriteWithARecursivePreconditionThatIsTheFirstRequestOfAClient()
+    {
+        var server = new FakeServer(request => FakeServer.IsProbe(request)
+            ? FakeServer.AnswerProbe("v1")
+            : throw new InvalidOperationException("No request expected."));
+        var client = server.CreateClient();
+
+        await Assert.ThrowsAsync<IncompatibleServerException>(() => client.WriteEventsAsync(
+            [new EventCandidate("https://www.eventsourcingdb.io", "/test", "io.eventsourcingdb.test", new { value = 23 })],
+            [Precondition.IsSubjectPristinePrecondition("/test", new PreconditionOptions(Recursive: true))],
+            TestContext.Current.CancellationToken
+        ));
+
+        Assert.Collection(server.Requests,
+            request => Assert.Equal(new FakeRequest("GET", FakeServer.ProbePath, null), request)
+        );
+    }
+
+    [Fact]
+    public async Task KeepsUsingTheV1ApiForAWriteWithoutARecursivePrecondition()
+    {
+        var server = new FakeServer(request => FakeServer.IsProbe(request)
+            ? FakeServer.AnswerProbe("v1")
+            : FakeServer.Json(HttpStatusCode.OK, $"[{TestRequests.EventJson}]"));
+        var client = server.CreateClient();
+
+        await client.WriteEventsAsync(
+            [new EventCandidate("https://www.eventsourcingdb.io", "/test", "io.eventsourcingdb.test", new { value = 23 })],
+            token: TestContext.Current.CancellationToken
+        );
+        await client.WriteEventsAsync(
+            [new EventCandidate("https://www.eventsourcingdb.io", "/test", "io.eventsourcingdb.test", new { value = 23 })],
+            [Precondition.IsSubjectPristinePrecondition("/test", new PreconditionOptions(Recursive: false))],
+            TestContext.Current.CancellationToken
+        );
+
+        Assert.Equal(1, server.ProbeCount);
+        Assert.Equal(2, server.Requests.Count(request => request.Path == "/api/v1/write-events"));
+    }
+
+    // Several writes with a recursive precondition, which are refused on the same remembered
+    // answer, find out again with one probe, and each of them is sent once.
+    [Fact]
+    public async Task SharesTheProbeThatFindsOutAgainBetweenWritesWithARecursivePrecondition()
+    {
+        var probeArrived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var answerProbe = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var probeCount = 0;
+
+        var server = new FakeServer(async (request, token) =>
+        {
+            if (FakeServer.IsProbe(request))
+            {
+                if (Interlocked.Increment(ref probeCount) == 1)
+                {
+                    return FakeServer.AnswerProbe("v1");
+                }
+
+                probeArrived.TrySetResult();
+                await answerProbe.Task.WaitAsync(token);
+
+                return FakeServer.AnswerProbe("v2");
+            }
+
+            return request.Path switch
+            {
+                "/api/v1/ping" => FakeServer.Json(HttpStatusCode.OK, V1Ping),
+                "/api/v2/data/write-events" => FakeServer.Ndjson(TestRequests.Event("v2", "0"), TestRequests.End),
+                _ => throw new InvalidOperationException("No request expected."),
+            };
+        });
+        var client = server.CreateClient();
+
+        await client.PingAsync(TestContext.Current.CancellationToken);
+
+        Task<IReadOnlyList<Event>> WriteRecursivelyAsync() => client.WriteEventsAsync(
+            [new EventCandidate("https://www.eventsourcingdb.io", "/test", "io.eventsourcingdb.test", new { value = 23 })],
+            [Precondition.IsSubjectPristinePrecondition("/test", new PreconditionOptions(Recursive: true))],
+            TestContext.Current.CancellationToken
+        );
+
+        var first = WriteRecursivelyAsync();
+        await probeArrived.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        var second = WriteRecursivelyAsync();
+
+        answerProbe.SetResult();
+        await Task.WhenAll(first, second);
+
+        Assert.Equal(2, Volatile.Read(ref probeCount));
+        Assert.Equal(2, server.Requests.Count(request => request.Path == "/api/v2/data/write-events"));
     }
 
     [Theory]

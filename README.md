@@ -49,7 +49,7 @@ Optionally, you might provide a `CancellationToken`.
 
 ### Talking to Servers With and Without the v2 API
 
-The client SDK works with servers that offer the v2 API of EventSourcingDB, which EventSourcingDB offers since version 1.3, and with servers that only offer the v1 API. Creating a client does not make any request. Instead, the first request of a client finds out which API the server offers, by sending a `GET` request to `/api/v2/system/ping`, and the client remembers the answer for its following requests. If this fails, for example because the server is not reachable, the first request fails with that error, and the next request tries again. If the server answers a path of the v2 API with a status of `404` or `405`, for example after it was rolled back to a version without it, the next request finds out again which API the server offers.
+The client SDK works with servers that offer the v2 API of EventSourcingDB, which EventSourcingDB offers since version 1.3, and with servers that only offer the v1 API. Creating a client does not make any request. Instead, the first request of a client finds out which API the server offers, by sending a `GET` request to `/api/v2/system/ping`, and the client remembers the answer for its following requests. If this fails, for example because the server is not reachable, the first request fails with that error, and the next request tries again. If the server answers a path of the v2 API with a status of `404` or `405`, for example after it was rolled back to a version without it, the next request finds out again which API the server offers. Before a write with a [recursive precondition](#checking-preconditions-on-subjects-recursively), which needs the v2 API, fails because the client remembers that the server only offers the v1 API, it finds out again in the same way, so that a server that was upgraded meanwhile gets the write through the v2 API.
 
 *Note that with dependency injection, every resolved `IClient` is a client of its own. The clients of one call to `AddEventSourcingDb` share the answer, so the first request of the first of them finds out the API for all of them.*
 
@@ -89,7 +89,7 @@ The client SDK never repeats a request on its own, not even after a status of `4
 
 EventSourcingDB never stops a write halfway, so a write whose response is lost may have been stored nonetheless. If `WriteEventsAsync` or `RegisterEventSchemaAsync` fails in a way that leaves open whether the server stored the write, it fails with an `OutcomeUnknownException`, whose `InnerException` is the cause. This happens, for example, if the connection stalls or breaks after the request was sent, if you cancel the request after it was sent, if the response ends before it is complete, or if the server fails unexpectedly, such as with a status of `500`. Before repeating such a write, find out whether it was stored, for example by reading the events of its subject.
 
-A write is certainly not stored, and fails with the error itself, only if the connection could not be established at all, so that nothing of the request was sent (for example, because the host name could not be resolved, the connection was refused, TLS failed, or the request stalled or was cancelled while connecting), or if the server explicitly refused the write, for example because a precondition does not hold:
+A write is certainly not stored, and fails with the error itself, only if the connection could not be established at all, so that nothing of the request was sent (for example, because the host name could not be resolved, the connection was refused, TLS failed, or the request stalled or was cancelled while connecting), or if the server explicitly refused the write, for example because a precondition does not hold, or if the client SDK refused the write before sending it, as with an `IncompatibleServerException`:
 
 ```csharp
 try
@@ -317,7 +317,7 @@ var writtenEvents = await client.WriteEventsAsync(
 
 Then `IsSubjectPristine` holds if neither the subject nor any nested subject has an event, `IsSubjectPopulated` holds if any of them has one, and `IsSubjectOnEventId` holds if the latest event among all of them has the given ID. With `Recursive` set to `false`, a precondition checks only the subject itself, as it does without options.
 
-*Note that a recursive precondition requires a server that offers the [v2 API](#talking-to-servers-with-and-without-the-v2-api). On a server that only offers the v1 API, a write with a recursive precondition fails with an `IncompatibleServerException` before anything is sent, so nothing is written.*
+*Note that a recursive precondition requires a server that offers the [v2 API](#talking-to-servers-with-and-without-the-v2-api). If the client remembers that the server only offers the v1 API, it first finds out again which API the server offers, since the server may have been upgraded meanwhile. If the server only offers the v1 API, the write fails with an `IncompatibleServerException` without being sent, so nothing is written.*
 
 ### Using the `IsEventQlQueryTrue` precondition
 
