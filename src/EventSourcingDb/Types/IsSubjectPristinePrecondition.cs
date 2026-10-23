@@ -1,3 +1,3 @@
 namespace EventSourcingDb.Types;
 
-internal record IsSubjectPristinePrecondition(string Subject);
+internal record IsSubjectPristinePrecondition(string Subject, PreconditionOptions? Options = null);

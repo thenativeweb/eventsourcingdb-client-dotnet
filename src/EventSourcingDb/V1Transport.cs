@@ -92,13 +92,26 @@ internal sealed class V1Transport(ServerConnection connection) : IClient
 
         try
         {
+            // The v1 API knows no options on a precondition, so it cannot check a recursive one,
+            // and the write fails before anything of it is sent. Any other precondition checks
+            // the same without its options.
+            var v1Preconditions = preconditions.ToArray();
+            if (v1Preconditions.Any(precondition => precondition.IsRecursive))
+            {
+                throw new IncompatibleServerException("The server does not offer the v2 API, which a recursive precondition needs.");
+            }
+
             var candidatesWithSerializedData = events
                 .Select(e => e with { Data = JsonSerializer.SerializeToElement(e.Data, DataSerializerOptions) })
                 .ToArray();
 
             // The body is built before the request is sent, so that a failure to build it is no
             // failure of the write, which is certainly not stored then.
-            using var content = ServerConnection.CreateWriteContent(new { events = candidatesWithSerializedData, preconditions });
+            using var content = ServerConnection.CreateWriteContent(new
+            {
+                events = candidatesWithSerializedData,
+                preconditions = v1Preconditions.Select(precondition => precondition.WithoutOptions()),
+            });
 
             // The request owns the content, and the content has to outlive the write, since telling
             // its outcome apart may need to look at it.

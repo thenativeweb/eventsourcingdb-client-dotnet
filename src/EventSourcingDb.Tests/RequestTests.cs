@@ -1,3 +1,4 @@
+using System;
 using System.Net;
 using System.Threading.Tasks;
 using EventSourcingDb.Types;
@@ -120,5 +121,82 @@ public sealed class RequestTests
             """{"events":[{"source":"https://www.eventsourcingdb.io","subject":"/test","type":"io.eventsourcingdb.test","data":{"value":23},"traceparent":"00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"},{"source":"https://www.eventsourcingdb.io","subject":"/test","type":"io.eventsourcingdb.test","data":{"value":42}}],"preconditions":[{"type":"isSubjectPristine","payload":{"subject":"/test"}}]}""",
             server.Requests[1].Body
         );
+    }
+
+    [Fact]
+    public async Task SendsTheOptionsOfAPreconditionToTheV2ApiOnlyIfTheyAreSet()
+    {
+        var server = FakeServer.ForApi("v2", _ => FakeServer.Text(HttpStatusCode.BadRequest, "refused\n"));
+        var client = server.CreateClient();
+
+        await Assert.ThrowsAsync<DbApiException>(() => client.WriteEventsAsync(
+            [new EventCandidate("https://www.eventsourcingdb.io", "/test", "io.eventsourcingdb.test", new { value = 23 })],
+            [
+                Precondition.IsSubjectPristinePrecondition("/test"),
+                Precondition.IsSubjectPristinePrecondition("/test", new PreconditionOptions(Recursive: true)),
+                Precondition.IsSubjectPopulatedPrecondition("/test"),
+                Precondition.IsSubjectPopulatedPrecondition("/test", new PreconditionOptions(Recursive: false)),
+                Precondition.IsSubjectOnEventIdPrecondition("/test", "0"),
+                Precondition.IsSubjectOnEventIdPrecondition("/test", "0", new PreconditionOptions(Recursive: true)),
+            ],
+            TestContext.Current.CancellationToken
+        ));
+
+        Assert.Equal(
+            """{"events":[{"source":"https://www.eventsourcingdb.io","subject":"/test","type":"io.eventsourcingdb.test","data":{"value":23}}],"preconditions":[{"type":"isSubjectPristine","payload":{"subject":"/test"}},{"type":"isSubjectPristine","payload":{"subject":"/test","options":{"recursive":true}}},{"type":"isSubjectPopulated","payload":{"subject":"/test"}},{"type":"isSubjectPopulated","payload":{"subject":"/test","options":{"recursive":false}}},{"type":"isSubjectOnEventId","payload":{"subject":"/test","eventId":"0"}},{"type":"isSubjectOnEventId","payload":{"subject":"/test","eventId":"0","options":{"recursive":true}}}]}""",
+            server.Requests[1].Body
+        );
+    }
+
+    // The v1 API knows no options on a precondition, and one that is not recursive checks the same
+    // without them.
+    [Fact]
+    public async Task SendsAPreconditionThatIsNotRecursiveToTheV1ApiWithoutItsOptions()
+    {
+        var server = FakeServer.ForApi("v1", _ => FakeServer.Text(HttpStatusCode.BadRequest, "refused\n"));
+        var client = server.CreateClient();
+
+        await Assert.ThrowsAsync<DbApiException>(() => client.WriteEventsAsync(
+            [new EventCandidate("https://www.eventsourcingdb.io", "/test", "io.eventsourcingdb.test", new { value = 23 })],
+            [
+                Precondition.IsSubjectPristinePrecondition("/test", new PreconditionOptions(Recursive: false)),
+                Precondition.IsSubjectPopulatedPrecondition("/test", new PreconditionOptions(Recursive: false)),
+                Precondition.IsSubjectOnEventIdPrecondition("/test", "0", new PreconditionOptions(Recursive: false)),
+            ],
+            TestContext.Current.CancellationToken
+        ));
+
+        Assert.Equal(
+            """{"events":[{"source":"https://www.eventsourcingdb.io","subject":"/test","type":"io.eventsourcingdb.test","data":{"value":23}}],"preconditions":[{"type":"isSubjectPristine","payload":{"subject":"/test"}},{"type":"isSubjectPopulated","payload":{"subject":"/test"}},{"type":"isSubjectOnEventId","payload":{"subject":"/test","eventId":"0"}}]}""",
+            server.Requests[1].Body
+        );
+    }
+
+    [Theory]
+    [InlineData("isSubjectPristine")]
+    [InlineData("isSubjectPopulated")]
+    [InlineData("isSubjectOnEventId")]
+    public async Task FailsAWriteWithARecursivePreconditionBeforeSendingItToTheV1Api(string preconditionType)
+    {
+        var server = FakeServer.ForApi("v1", _ => FakeServer.Text(HttpStatusCode.BadRequest, "refused\n"));
+        var client = server.CreateClient();
+
+        var options = new PreconditionOptions(Recursive: true);
+        var recursivePrecondition = preconditionType switch
+        {
+            "isSubjectPristine" => Precondition.IsSubjectPristinePrecondition("/test", options),
+            "isSubjectPopulated" => Precondition.IsSubjectPopulatedPrecondition("/test", options),
+            "isSubjectOnEventId" => Precondition.IsSubjectOnEventIdPrecondition("/test", "0", options),
+            _ => throw new ArgumentOutOfRangeException(nameof(preconditionType), preconditionType, "Unknown precondition."),
+        };
+
+        var error = await Assert.ThrowsAsync<IncompatibleServerException>(() => client.WriteEventsAsync(
+            [new EventCandidate("https://www.eventsourcingdb.io", "/test", "io.eventsourcingdb.test", new { value = 23 })],
+            [Precondition.IsSubjectPristinePrecondition("/test"), recursivePrecondition],
+            TestContext.Current.CancellationToken
+        ));
+
+        Assert.Equal("The server does not offer the v2 API, which a recursive precondition needs.", error.Message);
+        Assert.Collection(server.Requests, request => Assert.True(FakeServer.IsProbe(request)));
     }
 }

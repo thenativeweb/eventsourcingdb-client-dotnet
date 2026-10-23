@@ -304,6 +304,21 @@ var writtenEvents = await client.WriteEventsAsync(
 
 *Note that according to the CloudEvents standard, event IDs must be of type string.*
 
+### Checking preconditions on subjects recursively
+
+If you want the `IsSubjectPristine`, `IsSubjectPopulated`, or `IsSubjectOnEventId` precondition to check not only a subject, but also all nested subjects, pass a `PreconditionOptions` object and set `Recursive` to `true`:
+
+```csharp
+var writtenEvents = await client.WriteEventsAsync(
+    new[] { @event },
+    new[] { Precondition.IsSubjectPristinePrecondition("/books/42", new PreconditionOptions(Recursive: true)) }
+);
+```
+
+Then `IsSubjectPristine` holds if neither the subject nor any nested subject has an event, `IsSubjectPopulated` holds if any of them has one, and `IsSubjectOnEventId` holds if the latest event among all of them has the given ID. With `Recursive` set to `false`, a precondition checks only the subject itself, as it does without options.
+
+*Note that a recursive precondition requires a server that offers the [v2 API](#talking-to-servers-with-and-without-the-v2-api). On a server that only offers the v1 API, a write with a recursive precondition fails with an `IncompatibleServerException` before anything is sent, so nothing is written.*
+
 ### Using the `IsEventQlQueryTrue` precondition
 
 If you want to write events depending on an EventQL query, use the `IsEventQlQueryTruePrecondition`:
