@@ -13,10 +13,10 @@ namespace EventSourcingDb;
 // Waits until the database in a container answers a ping with the status 200, which is the only
 // status that counts. Every poll asks the ping of the v2 API first, and the ping of the v1 API
 // only if the server answers that with 404 or 405, as a server without the v2 API does (see
-// V2Api), so that the wait works against servers with either API or both. Testcontainers inspects the container
-// anew before every poll, and the mapped port is read anew for every poll, since Docker sometimes
-// publishes it only a while after it started the container. Once the container has exited, it
-// fails with the end of its log.
+// V2Api), so that the wait works against servers with either API or both. Testcontainers
+// inspects the container anew before every poll, and the mapped port is read anew for every
+// poll, since Docker sometimes publishes it only a while after it started the container. Once
+// the container has exited, it fails with the end of its log.
 internal sealed class UntilDatabaseIsReachable(
     ushort port,
     HttpClient httpClient,
