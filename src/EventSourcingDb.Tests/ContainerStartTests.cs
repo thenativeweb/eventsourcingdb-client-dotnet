@@ -2,8 +2,6 @@ using System;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
-using System.Net;
-using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Docker.DotNet;
@@ -42,22 +40,12 @@ public sealed class ContainerStartTests : IAsyncDisposable
 
         try
         {
-            using var httpClient = new HttpClient
-            {
-                BaseAddress = new Uri($"http://{container.Hostname}:{container.GetMappedPublicPort(3000)}"),
-            };
-            using var v2Response = await httpClient.GetAsync("/api/v2/system/ping", TestContext.Current.CancellationToken);
-            var status = v2Response.StatusCode;
+            // The ping of a client checks the database apart from the wait of the start, so this
+            // fails if the wait counts the database as reachable too early. The client finds out on
+            // its own which API the server offers.
+            var client = new Client(new Uri($"http://{container.Hostname}:{container.GetMappedPublicPort(3000)}"), "secret");
+            await client.PingAsync(TestContext.Current.CancellationToken);
 
-            // A server without the v2 API answers its ping with 404 or 405, so only the ping of
-            // the v1 API tells whether the database is reachable there.
-            if (status is HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed)
-            {
-                using var v1Response = await httpClient.GetAsync("/api/v1/ping", TestContext.Current.CancellationToken);
-                status = v1Response.StatusCode;
-            }
-
-            Assert.Equal(HttpStatusCode.OK, status);
             Assert.Single(await ListContainersAsync());
         }
         finally
