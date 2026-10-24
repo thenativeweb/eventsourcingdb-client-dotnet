@@ -458,13 +458,13 @@ internal sealed class V2Transport(ServerConnection connection, Action forgetV2) 
             .ConfigureAwait(false);
     }
 
-    // The v2 API refuses a write that it does not store with any error within its answer except
-    // store-failed, or with a status of 400, 401, 408, 413, 429, or 503.
+    // The v2 API refuses a write that it does not store with any error within its answer, or with
+    // a status of 400, 401, 408, 413, 429, or 503.
     private static bool IsRefusal(DbApiException exception)
     {
         if (exception.Status is HttpStatusCode.OK)
         {
-            return exception.Code != ErrorCodes.StoreFailed;
+            return true;
         }
 
         return exception.Status is HttpStatusCode.BadRequest

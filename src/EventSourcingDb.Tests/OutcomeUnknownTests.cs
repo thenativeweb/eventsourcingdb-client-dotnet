@@ -89,6 +89,7 @@ public sealed class OutcomeUnknownTests
             ErrorCodes.LicenseInvalid,
             ErrorCodes.StoreReadOnly,
             ErrorCodes.DiskFull,
+            ErrorCodes.StoreFailed,
             ErrorCodes.IndexesRebuilding,
             ErrorCodes.ServerShuttingDown,
             ErrorCodes.SubjectMalformed,
@@ -137,18 +138,6 @@ public sealed class OutcomeUnknownTests
         var exception = await RunAsync(server, request);
 
         Assert.Equal(ErrorCodes.PreconditionViolated, Assert.IsType<DbApiException>(exception).Code);
-    }
-
-    [Theory]
-    [MemberData(nameof(WritesOfTheV2Api))]
-    public async Task ReportsAWriteThatFailsWithStoreFailedAsOfUnknownOutcome(string apiVersion, string request)
-    {
-        var server = FakeServer.ForApi(apiVersion, _ => FakeServer.Ndjson(DomainError(ErrorCodes.StoreFailed), TestRequests.End));
-
-        var exception = await RunAsync(server, request);
-
-        var outcomeUnknownException = Assert.IsType<OutcomeUnknownException>(exception);
-        Assert.Equal(ErrorCodes.StoreFailed, Assert.IsType<DbApiException>(outcomeUnknownException.InnerException).Code);
     }
 
     [Theory]
