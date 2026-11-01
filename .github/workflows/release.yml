@@ -44,6 +44,9 @@ jobs:
     needs: qa
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: write
+      id-token: write
 
     steps:
       - name: Clone repository
@@ -74,9 +77,15 @@ jobs:
         if: ${{ steps.get_next_version.outputs.hasNextVersion == 'true' }}
         run: |
           make build
+      - name: Log in to NuGet
+        id: nuget_login
+        if: ${{ steps.get_next_version.outputs.hasNextVersion == 'true' }}
+        uses: NuGet/login@v1.2.0
+        with:
+          user: goloroden
       - name: Publish new version
         if: ${{ steps.get_next_version.outputs.hasNextVersion == 'true' }}
         run: |
           dotnet nuget push ./build/*.nupkg \
-            --api-key ${{ secrets.TOKEN_GITHUB_TO_NUGET_RW }} \
+            --api-key ${{ steps.nuget_login.outputs.NUGET_API_KEY }} \
             --source https://api.nuget.org/v3/index.json
