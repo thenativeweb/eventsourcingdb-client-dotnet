@@ -7,12 +7,14 @@ namespace EventSourcingDb.Tests;
 public sealed class ErrorCodesTests
 {
     // The slugs of all error codes, as cmd/server/api/error.go of EventSourcingDB lists them on
-    // main (36fa8821). When the server adds or removes a code, this list and ErrorCodes change
+    // main (63877b24). When the server adds or removes a code, this list and ErrorCodes change
     // together.
     private static readonly string[] _slugsOfTheServer =
     [
         "subject-missing",
         "subject-malformed",
+        "subject-too-long",
+        "subject-too-deep",
         "order-unknown",
         "event-id-missing",
         "event-id-malformed",
@@ -42,6 +44,7 @@ public sealed class ErrorCodesTests
         "event-schema-missing",
         "event-schema-malformed",
         "event-schema-not-object",
+        "event-schema-too-complex",
         "event-schema-already-registered",
         "last-audited-event-missing",
         "last-audited-event-mismatched",
@@ -61,10 +64,16 @@ public sealed class ErrorCodesTests
         "backup-increment-disconnected",
         "backup-failed",
         "backup-unreadable",
+        "backup-ahead-of-clock",
+        "import-ahead-of-clock",
+        "import-malformed",
+        "import-unreadable",
         "event-too-large",
         "data-malformed",
         "query-missing",
         "query-malformed",
+        "query-too-deep",
+        "query-too-long",
         "query-unevaluable",
         "query-not-boolean",
         "precondition-violated",
@@ -75,6 +84,7 @@ public sealed class ErrorCodesTests
         "store-failed",
         "indexes-rebuilding",
         "server-shutting-down",
+        "file-unreadable",
     ];
 
     [Fact]

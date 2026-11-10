@@ -8,6 +8,8 @@ public static class ErrorCodes
 {
     public const string SubjectMissing = "https://docs.eventsourcingdb.io/errors/subject-missing";
     public const string SubjectMalformed = "https://docs.eventsourcingdb.io/errors/subject-malformed";
+    public const string SubjectTooLong = "https://docs.eventsourcingdb.io/errors/subject-too-long";
+    public const string SubjectTooDeep = "https://docs.eventsourcingdb.io/errors/subject-too-deep";
     public const string OrderUnknown = "https://docs.eventsourcingdb.io/errors/order-unknown";
     public const string EventIdMissing = "https://docs.eventsourcingdb.io/errors/event-id-missing";
     public const string EventIdMalformed = "https://docs.eventsourcingdb.io/errors/event-id-malformed";
@@ -37,6 +39,7 @@ public static class ErrorCodes
     public const string EventSchemaMissing = "https://docs.eventsourcingdb.io/errors/event-schema-missing";
     public const string EventSchemaMalformed = "https://docs.eventsourcingdb.io/errors/event-schema-malformed";
     public const string EventSchemaNotObject = "https://docs.eventsourcingdb.io/errors/event-schema-not-object";
+    public const string EventSchemaTooComplex = "https://docs.eventsourcingdb.io/errors/event-schema-too-complex";
     public const string EventSchemaAlreadyRegistered = "https://docs.eventsourcingdb.io/errors/event-schema-already-registered";
     public const string LastAuditedEventMissing = "https://docs.eventsourcingdb.io/errors/last-audited-event-missing";
     public const string LastAuditedEventMismatched = "https://docs.eventsourcingdb.io/errors/last-audited-event-mismatched";
@@ -56,10 +59,16 @@ public static class ErrorCodes
     public const string BackupIncrementDisconnected = "https://docs.eventsourcingdb.io/errors/backup-increment-disconnected";
     public const string BackupFailed = "https://docs.eventsourcingdb.io/errors/backup-failed";
     public const string BackupUnreadable = "https://docs.eventsourcingdb.io/errors/backup-unreadable";
+    public const string BackupAheadOfClock = "https://docs.eventsourcingdb.io/errors/backup-ahead-of-clock";
+    public const string ImportAheadOfClock = "https://docs.eventsourcingdb.io/errors/import-ahead-of-clock";
+    public const string ImportMalformed = "https://docs.eventsourcingdb.io/errors/import-malformed";
+    public const string ImportUnreadable = "https://docs.eventsourcingdb.io/errors/import-unreadable";
     public const string EventTooLarge = "https://docs.eventsourcingdb.io/errors/event-too-large";
     public const string DataMalformed = "https://docs.eventsourcingdb.io/errors/data-malformed";
     public const string QueryMissing = "https://docs.eventsourcingdb.io/errors/query-missing";
     public const string QueryMalformed = "https://docs.eventsourcingdb.io/errors/query-malformed";
+    public const string QueryTooDeep = "https://docs.eventsourcingdb.io/errors/query-too-deep";
+    public const string QueryTooLong = "https://docs.eventsourcingdb.io/errors/query-too-long";
     public const string QueryUnevaluable = "https://docs.eventsourcingdb.io/errors/query-unevaluable";
     public const string QueryNotBoolean = "https://docs.eventsourcingdb.io/errors/query-not-boolean";
     public const string PreconditionViolated = "https://docs.eventsourcingdb.io/errors/precondition-violated";
@@ -70,4 +79,5 @@ public static class ErrorCodes
     public const string StoreFailed = "https://docs.eventsourcingdb.io/errors/store-failed";
     public const string IndexesRebuilding = "https://docs.eventsourcingdb.io/errors/indexes-rebuilding";
     public const string ServerShuttingDown = "https://docs.eventsourcingdb.io/errors/server-shutting-down";
+    public const string FileUnreadable = "https://docs.eventsourcingdb.io/errors/file-unreadable";
 }
