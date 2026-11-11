@@ -161,7 +161,7 @@ public sealed class RetriedWriteTests
 
     [Theory]
     [MemberData(nameof(WritesInEverySetup))]
-    public async Task SendsAWriteOnlyOnceIfTheStandardResilienceHandlerIsConfiguredAsTheReadmeSays(string apiVersion, string request, string setup)
+    public async Task SendsAWriteOnlyOnceIfTheStandardResilienceHandlerIsConfiguredAsTheDocumentationSays(string apiVersion, string request, string setup)
     {
         var server = CreateServer(apiVersion, isFirstWriteLost: true);
         await using var listener = new FakeServerListener(server);
