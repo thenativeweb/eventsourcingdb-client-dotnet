@@ -22,8 +22,6 @@ updates:
       # net10.0, when .NET 10 leaves support on Nov 14, 2028.
       - dependency-name: "Microsoft.Extensions.*"
         update-types: ["version-update:semver-major"]
-      - dependency-name: "System.IO.Pipelines"
-        update-types: ["version-update:semver-major"]
     groups:
       nuget:
         patterns:
@@ -53,8 +51,6 @@ updates:
       # platform brings. Lift this together with the major version that drops
       # net10.0, when .NET 10 leaves support on Nov 14, 2028.
       - dependency-name: "Microsoft.Extensions.*"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "System.IO.Pipelines"
         update-types: ["version-update:semver-major"]
     groups:
       nuget:
