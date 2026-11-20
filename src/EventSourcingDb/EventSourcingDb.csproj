@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <TargetFrameworks>net10.0;net11.0</TargetFrameworks>
 
     <ImplicitUsings>false</ImplicitUsings>
     <Nullable>enable</Nullable>
@@ -14,7 +14,6 @@
 
   <ItemGroup>
     <PackageReference Include="NSec.Cryptography" Version="25.4.0" />
-    <PackageReference Include="System.IO.Pipelines" Version="10.0.15" />
     <PackageReference Include="Testcontainers" Version="4.16.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.15"/>
     <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.15"/>
